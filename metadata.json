@@ -1,0 +1,7 @@
+{
+  "name": "Viniela Home & Service",
+  "description": "Solusi lengkap perawatan & perbaikan rumah Anda. Dari AC, plumbing, kebersihan, hingga laundry — semua ditangani tim profesional Viniela Home & Service.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
