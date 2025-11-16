@@ -1,11 +1,11 @@
-import React, { useEffect, Suspense, lazy } from 'react';
-import { HashRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
-import Navbar from './components/Navbar';
-import Footer from './components/Footer';
 import AOS from 'aos';
-import { ThemeProvider } from './contexts/ThemeContext';
+import React, { Suspense, lazy, useEffect } from 'react';
+import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import Footer from './components/Footer';
+import Navbar from './components/Navbar';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
 const ServicesPage = lazy(() => import('./pages/ServicesPage'));
@@ -17,14 +17,13 @@ const TechnicianPage = lazy(() => import('./pages/TechnicianPage'));
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
 const FaqPage = lazy(() => import('./pages/FaqPage'));
 
-
 const ScrollToTop = () => {
   const { pathname } = useLocation();
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [pathname]);
   return null;
-}
+};
 
 const PageLoader: React.FC = () => (
   <div className="w-full min-h-screen flex items-center justify-center bg-white dark:bg-dark-bg">
@@ -32,16 +31,19 @@ const PageLoader: React.FC = () => (
   </div>
 );
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string[] }> = ({ children, allowedRoles }) => {
+const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string[] }> = ({
+  children,
+  allowedRoles,
+}) => {
   const { currentUser } = useAuth();
   const location = useLocation();
 
   if (!currentUser) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
-  
+
   if (!allowedRoles.includes(currentUser.role)) {
-     return <Navigate to="/" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -49,7 +51,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
-  const hideLayout = location.pathname.startsWith('/admin') || location.pathname.startsWith('/technician');
+  const hideLayout =
+    location.pathname.startsWith('/admin') || location.pathname.startsWith('/technician');
 
   if (hideLayout) {
     return <>{children}</>;
@@ -63,7 +66,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     </>
   );
 };
-
 
 const App: React.FC = () => {
   useEffect(() => {
@@ -92,21 +94,21 @@ const App: React.FC = () => {
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
                     <Route path="/faq" element={<FaqPage />} />
-                    <Route 
-                      path="/admin/*" 
+                    <Route
+                      path="/admin/*"
                       element={
                         <ProtectedRoute allowedRoles={['admin']}>
                           <AdminPage />
                         </ProtectedRoute>
-                      } 
+                      }
                     />
-                    <Route 
-                      path="/technician" 
+                    <Route
+                      path="/technician"
                       element={
                         <ProtectedRoute allowedRoles={['technician']}>
                           <TechnicianPage />
                         </ProtectedRoute>
-                      } 
+                      }
                     />
                   </Routes>
                 </Suspense>
