@@ -44,6 +44,7 @@ import {
 } from '../lib/storage';
 
 // ----- API base & types -----
+// const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:4222/api/v1';
 const API_BASE_URL = 'http://localhost:4222/api/v1';
 
 export interface User {
@@ -1489,40 +1490,108 @@ const AdminPage: React.FC = () => {
     setIsServiceModalOpen(true);
   };
 
+  // ==========================
+  //   SIMPAN LAYANAN (SERVICE)
+  //   - EDIT: hanya lokal
+  //   - CREATE: call POST http://localhost:4000/api/v1/admin/service-store + update lokal
+  // ==========================
   const handleSaveService = (serviceData: Service, categoryName: string) => {
-    let newServices = JSON.parse(JSON.stringify(services)) as ServiceCategory[];
+    // helper untuk update state lokal + localStorage
+    const applyLocalUpdate = () => {
+      let newServices = JSON.parse(JSON.stringify(services)) as ServiceCategory[];
 
-    if (serviceToEdit && categoryToEdit) {
-      const oldCategory = newServices.find((c) => c.category === categoryToEdit);
-      if (oldCategory) {
-        oldCategory.services = oldCategory.services.filter((s) => s.name !== serviceToEdit.name);
-        if (oldCategory.services.length === 0) {
-          newServices = newServices.filter((c) => c.category !== categoryToEdit);
+      if (serviceToEdit && categoryToEdit) {
+        const oldCategory = newServices.find((c) => c.category === categoryToEdit);
+        if (oldCategory) {
+          oldCategory.services = oldCategory.services.filter((s) => s.name !== serviceToEdit.name);
+          if (oldCategory.services.length === 0) {
+            newServices = newServices.filter((c) => c.category !== categoryToEdit);
+          }
         }
       }
-    }
 
-    let targetCategory = newServices.find((c) => c.category === categoryName);
-    if (targetCategory) {
-      const existingServiceIndex = targetCategory.services.findIndex(
-        (s) => s.name === serviceData.name,
-      );
-      if (existingServiceIndex > -1) {
-        targetCategory.services[existingServiceIndex] = serviceData;
+      let targetCategory = newServices.find((c) => c.category === categoryName);
+      if (targetCategory) {
+        const existingServiceIndex = targetCategory.services.findIndex(
+          (s) => s.name === serviceData.name,
+        );
+        if (existingServiceIndex > -1) {
+          targetCategory.services[existingServiceIndex] = serviceData;
+        } else {
+          targetCategory.services.push(serviceData);
+        }
       } else {
-        targetCategory.services.push(serviceData);
+        newServices.push({
+          category: categoryName,
+          services: [serviceData],
+        });
       }
-    } else {
-      newServices.push({
-        category: categoryName,
-        services: [serviceData],
-      });
+
+      setServices(newServices);
+      saveServices(newServices);
+    };
+
+    // EDIT MODE -> sementara hanya update lokal dulu
+    if (serviceToEdit) {
+      applyLocalUpdate();
+      setIsServiceModalOpen(false);
+      addNotification(`Layanan "${serviceData.name}" berhasil diperbarui.`, 'success');
+      return;
     }
 
-    setServices(newServices);
-    saveServices(newServices);
-    setIsServiceModalOpen(false);
-    addNotification(`Layanan "${serviceData.name}" berhasil disimpan.`, 'success');
+    // CREATE MODE -> call API service-store (port 4000)
+    (async () => {
+      try {
+        const anyService = serviceData as any;
+
+        const durationMinutes =
+          anyService.duration_minute ??
+          (typeof serviceData.duration === 'number' ? serviceData.duration : 0);
+
+        const durationHours =
+          anyService.duration_hour ??
+          (typeof serviceData.duration === 'number' ? Math.floor(serviceData.duration / 60) : 0);
+
+        const payload = {
+          name: serviceData.name,
+          price: String(serviceData.price ?? 0),
+          unit_price: serviceData.priceUnit ?? 'unit',
+          point: anyService.point ?? 0,
+          icon: serviceData.icon,
+          service_category: categoryName,
+          duration_minute: durationMinutes,
+          duration_hour: durationHours,
+          is_guarantee: anyService.is_guarantee ?? false,
+        };
+
+        const res = await fetch(`http://localhost:4222/api/v1/admin/service-store`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `Gagal menyimpan layanan: ${res.status}`);
+        }
+
+        // kalau backend kirim data & kamu mau pakai (misal id), bisa parse di sini:
+        // const json = await res.json().catch(() => null);
+
+        applyLocalUpdate();
+        setIsServiceModalOpen(false);
+        addNotification(`Layanan "${serviceData.name}" berhasil disimpan ke server.`, 'success');
+      } catch (error) {
+        console.error('Error saat menyimpan layanan ke server:', error);
+        addNotification(
+          'Gagal menyimpan layanan ke server. Silakan cek koneksi atau coba lagi.',
+          'error',
+        );
+      }
+    })();
   };
 
   const handleDeleteService = () => {
@@ -2511,7 +2580,7 @@ const AdminPage: React.FC = () => {
                         {user.name.charAt(0)}
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-900 dark:text-white">{user.name}</p>
+                        <p className="font-semibold text-gray-900 dark:text:white">{user.name}</p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
                           @{user.username} • {user.role}
                         </p>
