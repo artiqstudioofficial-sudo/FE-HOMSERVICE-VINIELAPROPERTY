@@ -1,41 +1,48 @@
+// pages/AdminPage.tsx
 import {
   BarChart2,
   Calendar as CalendarIcon,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Edit,
   ExternalLink,
   LayoutDashboard,
   LogOut,
   Map as MapIcon,
   MapPin,
   PlusCircle,
-  Search,
   Settings,
-  Trash2,
   UserPlus,
   Users,
-  X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
 import BookingFormModal from '../components/BookingFormModal';
 import Calendar from '../components/Calendar';
 import GenericConfirmationModal from '../components/GenericConfirmationModal';
 import ServiceFormModal from '../components/ServiceFormModal';
+
 import { Service, ServiceCategory, serviceIcons } from '../config/services';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import {
+  AdminBooking,
+  ApiTechScheduleByUser,
+  ServiceMasterCategory,
+  fetchBookingsFromApi,
+  fetchRolesFromApi,
+  fetchServiceCategoriesFromApi,
+  fetchServicesFromApi,
+  fetchTechScheduleFromApi,
+  fetchUsersFromApi,
+  mapApiStatusToBookingStatus,
+  updateBookingStatusOnServer,
+} from '../lib/api';
 import { simulateNotification } from '../lib/notifications';
 import {
-  Booking,
   BookingStatus,
   formatDateToKey,
   generateTimeSlots,
   getAvailability,
   getBookings,
-  getPhoto,
   getServices,
   parseKeyToDate,
   saveAvailability,
@@ -43,923 +50,12 @@ import {
   saveServices,
 } from '../lib/storage';
 
-// ----- API base & types -----
-// const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:4222/api/v1';
-const API_BASE_URL = 'http://localhost:4222/api/v1';
-
-export interface User {
-  id: number;
-  name: string; // from "fullname"
-  username: string;
-  role: string;
-  created_at?: string;
-  password?: string; // used only in UI form
-}
-
-export interface UserRole {
-  id: number;
-  name: string; // "admin", "technician", dll
-}
-
-// Booking yang dipakai di Admin (boleh punya formId/applyId dari backend)
-type AdminBooking = Booking & {
-  formId?: number;
-  applyId?: number;
-  technicianUserId?: number | null; // <- user_id teknisi dari backend
-};
-
-// ----- Types for Tech Schedule API -----
-type ApiTechScheduleItem = {
-  apply_id: number;
-  form_id: number;
-  fullname: string; // nama customer
-  wa: string;
-  address: string;
-  service: string;
-  schedule_date: string; // "2025-11-16"
-  schedule_time: string; // "12:30"
-  status: string; // "INPROGRESS" | dll
-};
-
-type ApiTechScheduleByUser = {
-  user_id: number;
-  fullname: string; // nama teknisi
-  schedules: ApiTechScheduleItem[];
-};
-
-// ----- Types for Booking List API -----
-type ApiBookingItem = {
-  apply_id: number;
-  form_id: number;
-  technician_id: number | null;
-  technician_name: string | null;
-  technician_username: string | null;
-  role: string;
-  user_created_at: string;
-  customer_name: string;
-  customer_wa: string;
-  address: string;
-  service: string;
-  schedule_date: string;
-  schedule_time: string;
-  status: string;
-  lat: string;
-  lng: string;
-  note: string | null;
-  additional_cost: string | null;
-  arrive_photo: string | null;
-  before_photo: string | null;
-  after_photo: string | null;
-};
-
-// ----- Types for Service List API -----
-type ApiServiceItem = {
-  name: string;
-  price: string;
-  unit_price?: Service['priceUnit'] | string; // string dari API -> dinormalisasi
-  category?: string;
-  icon?: keyof typeof serviceIcons;
-  duration?: number;
-  duration_days?: number;
-};
-
-// Mapping response API -> User
-async function fetchUsersFromApi(): Promise<User[]> {
-  const res = await fetch(`${API_BASE_URL}/admin/user-management-list`, {
-    credentials: 'include',
-  });
-
-  if (!res.ok) {
-    throw new Error(`Gagal fetch users: ${res.status}`);
-  }
-
-  const json = await res.json();
-  const data = Array.isArray(json.data) ? json.data : [];
-
-  return data.map((u: any) => ({
-    id: u.id,
-    name: u.fullname,
-    username: u.username,
-    role: u.role,
-    created_at: u.created_at,
-  }));
-}
-
-// Mapping response API -> UserRole
-async function fetchRolesFromApi(): Promise<UserRole[]> {
-  const res = await fetch(`${API_BASE_URL}/admin/user-role-list`, {
-    credentials: 'include',
-  });
-
-  if (!res.ok) {
-    throw new Error(`Gagal fetch roles: ${res.status}`);
-  }
-
-  const json = await res.json();
-  const data = Array.isArray(json.data) ? json.data : [];
-
-  return data.map((r: any) => ({
-    id: r.id,
-    name: r.name,
-  }));
-}
-
-// --- API: fetch daftar booking untuk section "Daftar Booking" ---
-async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
-  const res = await fetch(`${API_BASE_URL}/admin/user-booking-list`, {
-    credentials: 'include',
-  });
-
-  if (!res.ok) {
-    throw new Error(`Gagal fetch booking list: ${res.status}`);
-  }
-
-  const json = await res.json();
-  const data: ApiBookingItem[] = Array.isArray(json.data) ? json.data : [];
-
-  return data.map((row): AdminBooking => {
-    const scheduleDate = row.schedule_date;
-    const status = mapApiStatusToBookingStatus(row.status);
-
-    return {
-      id: row.apply_id, // pakai apply_id sebagai id unik di admin
-      formId: row.form_id,
-      applyId: row.apply_id,
-
-      name: row.customer_name,
-      whatsapp: row.customer_wa,
-      service: row.service,
-      address: row.address,
-      startDate: scheduleDate,
-      endDate: scheduleDate,
-      time: row.schedule_time,
-
-      technician: row.technician_name || 'Belum Ditugaskan',
-      technicianUserId: row.technician_id ?? null,
-
-      status,
-
-      lat: Number(row.lat),
-      lng: Number(row.lng),
-      arrivalTime: null,
-      startTime: null,
-      endTime: null,
-      workDurationMinutes: 0,
-      additionalCosts: row.additional_cost ? Number(row.additional_cost) || 0 : 0,
-      note: row.note || '',
-      photos: {
-        arrival: row.arrive_photo || undefined,
-        before: row.before_photo || undefined,
-        after: row.after_photo || undefined,
-      },
-    };
-  });
-}
-
-// --- API: fetch daftar layanan untuk section "Manajemen Layanan" ---
-async function fetchServicesFromApi(): Promise<ServiceCategory[]> {
-  const res = await fetch(`${API_BASE_URL}/admin/service-list`, {
-    credentials: 'include',
-  });
-
-  if (!res.ok) {
-    throw new Error(`Gagal fetch services: ${res.status}`);
-  }
-
-  const json = await res.json();
-  const data: ApiServiceItem[] = Array.isArray(json.data) ? json.data : [];
-
-  const categoriesMap = new Map<string, ServiceCategory>();
-
-  data.forEach((item) => {
-    const categoryName = item.category || 'Layanan Umum';
-    let category = categoriesMap.get(categoryName);
-    if (!category) {
-      category = { category: categoryName, services: [] };
-      categoriesMap.set(categoryName, category);
-    }
-
-    // Normalisasi unit harga ke union type
-    const rawUnit = (item.unit_price || '').toString().toLowerCase();
-    let unit: Service['priceUnit'] = 'unit';
-
-    if (rawUnit === 'unit') unit = 'unit';
-    else if (rawUnit === 'jam' || rawUnit === 'hour' || rawUnit === 'hours') unit = 'jam';
-    else if (rawUnit === 'kg') unit = 'kg';
-    else if (rawUnit === 'm2' || rawUnit === 'm²') unit = 'm²';
-
-    const service: Service = {
-      name: item.name,
-      icon: (item.icon as any) || 'Wrench',
-      price: Number(item.price) || 0,
-      priceUnit: unit,
-      duration: item.duration ?? 60,
-      durationDays: item.duration_days ?? 1,
-      description: '',
-      includes: [],
-      excludes: [],
-    };
-
-    category.services.push(service);
-  });
-
-  return Array.from(categoriesMap.values());
-}
-
-const statuses: BookingStatus[] = ['Confirmed', 'On Site', 'In Progress', 'Completed', 'Cancelled'];
-
-const statusColors: { [key in BookingStatus]: string } = {
-  Confirmed: 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300',
-  'On Site': 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/60 dark:text-cyan-300',
-  'In Progress': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/60 dark:text-yellow-300',
-  Completed: 'bg-green-100 text-green-800 dark:bg-green-900/60 dark:text-green-300',
-  Cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/60 dark:text-red-300',
-};
-
-const timelineStatusColors: { [key in BookingStatus]: string } = {
-  Confirmed: 'bg-blue-500 border-blue-700',
-  'On Site': 'bg-cyan-500 border-cyan-700',
-  'In Progress': 'bg-yellow-500 border-yellow-700',
-  Completed: 'bg-green-500 border-green-700',
-  Cancelled: 'bg-gray-400 border-gray-600',
-};
-
-// format Date -> "YYYY-MM-DD" untuk query ?schedule_date=
-function formatDateForApi(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-// mapping status API -> BookingStatus
-const mapApiStatusToBookingStatus = (status: string): BookingStatus => {
-  switch (status.toUpperCase()) {
-    case 'INPROGRESS':
-    case 'IN_PROGRESS':
-      return 'In Progress';
-    case 'DONE':
-    case 'COMPLETED':
-      return 'Completed';
-    case 'CANCELLED':
-    case 'CANCELED':
-      return 'Cancelled';
-    case 'ONSITE':
-    case 'ON_SITE':
-      return 'On Site';
-    default:
-      return 'Confirmed';
-  }
-};
-
-// mapping BookingStatus -> kode status backend
-// ⚠️ SESUAIKAN ANGKA DI SINI DENGAN TABEL STATUS DI BACKEND-MU
-const BOOKING_STATUS_TO_API_CODE: Record<BookingStatus, string> = {
-  Confirmed: '1',
-  'On Site': '2',
-  'In Progress': '3',
-  Completed: '4',
-  Cancelled: '5', // contoh: misal "5" = Cancelled -> sesuaikan sendiri
-};
-
-// --- API: update status booking ---
-// METHOD: PUT
-// BODY: { form_id: "1", status: "5", user_id: <id teknisi> }
-async function updateBookingStatusOnServer(
-  formId: number,
-  newStatus: BookingStatus,
-  userId: number,
-) {
-  const statusCode = BOOKING_STATUS_TO_API_CODE[newStatus];
-  if (!statusCode) {
-    throw new Error(`Kode status belum di-mapping untuk status: ${newStatus}`);
-  }
-
-  const payload: any = {
-    form_id: String(formId),
-    status: statusCode,
-    user_id: userId,
-  };
-
-  const res = await fetch(`${API_BASE_URL}/admin/update-booking-status`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Gagal update status: ${res.status}`);
-  }
-}
-
-// --- Technician Form Modal Component ---
-interface TechnicianFormModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (technician: User) => void | Promise<void>;
-  technicianToEdit: User | null;
-  existingUsernames: string[];
-  roles: UserRole[];
-}
-
-const TechnicianFormModal: React.FC<TechnicianFormModalProps> = ({
-  isOpen,
-  onClose,
-  onSave,
-  technicianToEdit,
-  existingUsernames,
-  roles,
-}) => {
-  const [formData, setFormData] = useState<Partial<User>>({});
-  const [errors, setErrors] = useState<{ [key: string]: string }>({});
-
-  useEffect(() => {
-    if (isOpen) {
-      const defaultRole =
-        technicianToEdit?.role ||
-        roles.find((r) => r.name === 'technician')?.name ||
-        roles[0]?.name ||
-        '';
-
-      setFormData(
-        technicianToEdit
-          ? { ...technicianToEdit, password: '' }
-          : { name: '', username: '', role: defaultRole, password: '' },
-      );
-      setErrors({});
-    }
-  }, [isOpen, technicianToEdit, roles]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    if (errors[name]) {
-      setErrors((prev) => ({ ...prev, [name]: '' }));
-    }
-  };
-
-  const validate = () => {
-    const newErrors: { [key: string]: string } = {};
-    if (!formData.name?.trim()) newErrors.name = 'Nama wajib diisi.';
-    if (!formData.username?.trim()) newErrors.username = 'Username wajib diisi.';
-    if (!formData.role?.trim()) newErrors.role = 'Peran wajib diisi.';
-
-    if (!technicianToEdit) {
-      if (!formData.password?.trim()) newErrors.password = 'Password wajib diisi untuk user baru.';
-      if (existingUsernames.includes(formData.username!.trim())) {
-        newErrors.username = 'Username sudah digunakan.';
-      }
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (validate()) {
-      onSave({ ...(formData as User) });
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div
-      className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg transform transition-all"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <form onSubmit={handleSubmit}>
-          <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-slate-700">
-            <h2 className="text-2xl font-bold font-poppins text-gray-800 dark:text-white">
-              {technicianToEdit ? 'Edit User' : 'Tambah User Baru'}
-            </h2>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700"
-            >
-              <X size={24} />
-            </button>
-          </div>
-          <div className="p-6 space-y-4">
-            {/* NAMA LENGKAP */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Nama Lengkap
-              </label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name || ''}
-                onChange={handleChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
-              />
-              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
-            </div>
-
-            {/* USERNAME & ROLE */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* USERNAME */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Username
-                </label>
-                <input
-                  type="text"
-                  name="username"
-                  value={formData.username || ''}
-                  onChange={handleChange}
-                  readOnly={!!technicianToEdit}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary read-only:bg-gray-100 dark:read-only:bg-slate-600"
-                />
-                {errors.username && <p className="text-red-500 text-xs mt-1">{errors.username}</p>}
-              </div>
-
-              {/* ROLE SELECT */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Role User
-                </label>
-                <select
-                  name="role"
-                  value={formData.role || ''}
-                  onChange={handleChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
-                >
-                  <option value="">Pilih role</option>
-                  {roles.map((role) => (
-                    <option key={role.id} value={role.name}>
-                      {role.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.role && <p className="text-red-500 text-xs mt-1">{errors.role}</p>}
-              </div>
-            </div>
-
-            {/* PASSWORD */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Password
-              </label>
-              <input
-                type="password"
-                name="password"
-                value={formData.password || ''}
-                onChange={handleChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
-              />
-              {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
-              {technicianToEdit && (
-                <p className="text-xs text-gray-400 mt-1">
-                  Kosongkan jika tidak ingin mengubah password.
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="p-6 bg-light-bg dark:bg-slate-800/50 border-t border-gray-200 dark:border-slate-700 rounded-b-2xl flex justify-end gap-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="bg-gray-200 text-gray-800 dark:bg-slate-600 dark:text-gray-200 font-bold px-6 py-2 rounded-lg hover:bg-gray-300 dark:hover:bg-slate-500"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              className="bg-primary text-white font-bold px-6 py-2 rounded-lg hover:bg-primary-dark"
-            >
-              Simpan
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-// --- Helper Functions for Schedule Conflict Check ---
-const getBookingTimeRange = (
-  booking: AdminBooking,
-  servicesMap: Map<string, Service>,
-): { start: Date; end: Date } | null => {
-  const service = servicesMap.get(booking.service);
-  if (!service) return null;
-
-  const [hour, minute] = booking.time.split(':').map(Number);
-  const startDate = new Date(booking.startDate);
-
-  const serviceDurationDays = service.durationDays || 1;
-  if (serviceDurationDays > 1) {
-    startDate.setHours(8, 0, 0, 0);
-    const endDate = new Date(booking.endDate);
-    endDate.setHours(18, 0, 0, 0);
-    return { start: startDate, end: endDate };
-  }
-
-  startDate.setHours(hour, minute, 0, 0);
-  const duration = service.duration || 60;
-  const endDate = new Date(startDate.getTime() + duration * 60000);
-
-  return { start: startDate, end: endDate };
-};
-
-const isTechnicianAvailable = (
-  technicianName: string,
-  currentBooking: AdminBooking,
-  allBookings: AdminBooking[],
-  servicesMap: Map<string, Service>,
-): boolean => {
-  if (technicianName === 'Belum Ditugaskan') return true;
-
-  const currentRange = getBookingTimeRange(currentBooking, servicesMap);
-  if (!currentRange) return true;
-
-  const techBookings = allBookings.filter(
-    (b) =>
-      b.technician === technicianName && b.id !== currentBooking.id && b.status !== 'Cancelled',
-  );
-
-  for (const otherBooking of techBookings) {
-    const otherRange = getBookingTimeRange(otherBooking, servicesMap);
-    if (!otherRange) continue;
-
-    if (currentRange.start < otherRange.end && currentRange.end > otherRange.start) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
-const WhatsAppButton: React.FC<{ booking: AdminBooking }> = ({ booking }) => {
-  const formatWhatsappNumber = (phone: string) => {
-    if (phone.startsWith('0')) {
-      return `62${phone.substring(1)}`;
-    }
-    return phone;
-  };
-
-  const generateWhatsappLink = () => {
-    const number = formatWhatsappNumber(booking.whatsapp);
-    const bookingDate = new Date(booking.startDate).toLocaleDateString('id-ID', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-    const message = `Halo ${booking.name}, kami dari Viniela Home & Service ingin mengkonfirmasi pesanan Anda:
-
-*Layanan:* ${booking.service}
-*Jadwal:* ${bookingDate}, pukul ${booking.time}
-*Alamat:* ${booking.address}
-
-Mohon balas pesan ini untuk mengkonfirmasi detail di atas sudah benar. Terima kasih.`;
-
-    return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
-  };
-
-  return (
-    <a
-      href={generateWhatsappLink()}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-2 bg-green-500 text-white text-xs font-bold px-3 py-1.5 rounded-full hover:bg-green-600 transition-colors"
-      title={`Chat ${booking.name} di WhatsApp`}
-    >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        className="h-4 w-4"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-      >
-        <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.894 11.892-1.99 0-3.903-.52-5.586-1.459l-6.354 1.654zm.791-6.938c.323.517.76 1.002 1.251 1.431.987.842 2.197 1.298 3.51 1.298 5.421 0 9.811-4.39 9.811-9.811 0-2.651-1.04-5.14-2.9-7.001-1.859-1.86-4.35-2.901-7.001-2.901-5.42 0-9.81 4.39-9.81 9.81 0 2.05.61 3.992 1.698 5.688l-.299 1.093zM9.262 7.176c-.23-.487-.474-.487-.698-.487-.203 0-.428.02-.638.211-.23.19-.813.78-.813 1.901 0 1.12.831 2.201.946 2.36.116.161 1.638 2.542 4.004 3.53.585.24 1.045.38 1.41.496.535.169.97.143 1.324-.087.419-.27.813-.981.928-1.342.116-.361.116-.671.083-.758-.032-.087-.23-.142-.487-.27-.257-.128-1.515-.748-1.758-.831-.243-.083-.419-.083-.595.083-.176.166-.66.831-.813.981-.152.152-.291.178-.487.05-.196-.128-.831-.289-1.587-.961-.595-.541-.97-1.221-1.085-1.428-.116-.208-.017-.323.07-.43.087-.107.196-.178.291-.269.1-.096.143-.15.211-.243.068-.092.032-.178-.017-.258-.05-.082-.464-1.113-.638-1.515z" />
-      </svg>
-      Chat
-    </a>
-  );
-};
-
-const formatDuration = (minutes: number): string => {
-  if (!minutes) return '-';
-  if (minutes < 60) return `${minutes} mnt`;
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  if (remainingMinutes === 0) return `${hours} jam`;
-  return `${hours} jam ${remainingMinutes} mnt`;
-};
-
-const BookingPhoto: React.FC<{
-  photoKey?: string;
-  alt: string;
-  label: string;
-}> = ({ photoKey, alt, label }) => {
-  const [photoData, setPhotoData] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!photoKey) {
-      setPhotoData(null);
-      return;
-    }
-
-    // kalau dari API berupa URL langsung pakai URL-nya
-    if (photoKey.startsWith('http://') || photoKey.startsWith('https://')) {
-      setPhotoData(photoKey);
-      return;
-    }
-
-    // kalau berupa key lokal, ambil dari storage
-    setPhotoData(getPhoto(photoKey));
-  }, [photoKey]);
-
-  if (!photoData) {
-    return null;
-  }
-
-  return (
-    <a href={photoData} target="_blank" rel="noopener noreferrer" className="block">
-      <img src={photoData} className="w-20 h-20 object-cover rounded-md" alt={alt} />
-      <span className="text-center block text-gray-500 text-[10px]">{label}</span>
-    </a>
-  );
-};
-
-const TechnicianSchedule: React.FC<{
-  bookings: AdminBooking[];
-  selectedDate: Date;
-  technicians: User[];
-}> = ({ bookings, selectedDate, technicians }) => {
-  const START_HOUR = 8;
-  const END_HOUR = 18;
-  const WORKDAY_MINUTES = (END_HOUR - START_HOUR - 1) * 60;
-  const totalMinutes = (END_HOUR - START_HOUR) * 60;
-
-  const [servicesMap, setServicesMap] = useState<Map<string, Service>>(new Map());
-
-  useEffect(() => {
-    const servicesData = getServices();
-    const map = new Map<string, Service>();
-    servicesData.forEach((category) => {
-      category.services.forEach((service) => {
-        map.set(service.name, service);
-      });
-    });
-    setServicesMap(map);
-  }, []);
-
-  const filteredBookings = useMemo(() => {
-    const selectedDateKey = formatDateToKey(selectedDate);
-    return bookings.filter((b) => {
-      const start = formatDateToKey(new Date(b.startDate));
-      const end = formatDateToKey(new Date(b.endDate));
-      return selectedDateKey >= start && selectedDateKey <= end && b.status !== 'Cancelled';
-    });
-  }, [bookings, selectedDate]);
-
-  const timelineHours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
-
-  const getProgressBarColor = (percentage: number) => {
-    if (percentage > 80) return 'bg-red-500';
-    if (percentage > 50) return 'bg-yellow-400';
-    return 'bg-green-500';
-  };
-
-  return (
-    <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-6">
-      <h2 className="text-xl font-bold font-poppins text-gray-800 dark:text-white mb-4">
-        Jadwal Teknisi untuk{' '}
-        {selectedDate.toLocaleDateString('id-ID', {
-          weekday: 'long',
-          day: 'numeric',
-          month: 'long',
-        })}
-      </h2>
-      <div className="overflow-x-auto">
-        <div className="min-w-[900px]">
-          <div className="flex border-b-2 border-gray-200 dark:border-slate-700 pb-2">
-            <div className="w-48 flex-shrink-0"></div>
-            <div className="flex-1 grid grid-cols-10">
-              {timelineHours.map((hour) => (
-                <div
-                  key={hour}
-                  className="text-center text-xs font-semibold text-gray-500 dark:text-gray-400"
-                >
-                  {String(hour).padStart(2, '0')}:00
-                </div>
-              ))}
-            </div>
-          </div>
-          {technicians.map((tech) => {
-            const techBookings = filteredBookings.filter((b) => b.technician === tech.name);
-
-            const totalWorkMinutes = techBookings.reduce((total, booking) => {
-              const service = servicesMap.get(booking.service);
-              if (!service) return total;
-
-              const isMultiDay = service.durationDays && service.durationDays > 1;
-              const isStartDate =
-                formatDateToKey(new Date(booking.startDate)) === formatDateToKey(selectedDate);
-
-              if (isMultiDay && !isStartDate) {
-                return total + WORKDAY_MINUTES;
-              }
-
-              return total + (service.duration || 0);
-            }, 0);
-
-            const workloadPercentage = Math.min((totalWorkMinutes / WORKDAY_MINUTES) * 100, 100);
-            const progressBarColor = getProgressBarColor(workloadPercentage);
-
-            return (
-              <div key={tech.id} className="flex border-b border-gray-100 dark:border-slate-700/50">
-                <div className="w-48 flex-shrink-0 py-3 px-2 border-r border-gray-100 dark:border-slate-700/50">
-                  <p className="font-semibold text-sm text-gray-700 dark:text-gray-200 truncate">
-                    {tech.name}
-                  </p>
-                  <div className="mt-2">
-                    <div className="flex justify-between text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-0.5">
-                      <span>Beban Kerja</span>
-                      <span>
-                        {(totalWorkMinutes / 60).toFixed(1)} / {WORKDAY_MINUTES / 60} jam
-                      </span>
-                    </div>
-                    <div
-                      className="w-full bg-gray-200 rounded-full h-2 dark:bg-slate-700"
-                      title={`${workloadPercentage.toFixed(0)}% terisi`}
-                    >
-                      <div
-                        className={`${progressBarColor} h-2 rounded-full transition-all duration-500`}
-                        style={{ width: `${workloadPercentage}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex-1 h-20 relative">
-                  {timelineHours.map((hour) => (
-                    <div
-                      key={`line-${hour}`}
-                      className="absolute h-full border-l border-gray-100 dark:border-slate-700/50"
-                      style={{
-                        left: `${((hour - START_HOUR) / (END_HOUR - START_HOUR)) * 100}%`,
-                      }}
-                    ></div>
-                  ))}
-                  {techBookings.map((booking) => {
-                    const isMultiDay = booking.startDate !== booking.endDate;
-                    const isStartDate =
-                      formatDateToKey(new Date(booking.startDate)) ===
-                      formatDateToKey(selectedDate);
-
-                    let minutesFromStart: number;
-                    let durationMinutes: number;
-                    const serviceInfo = servicesMap.get(booking.service);
-
-                    if (isMultiDay && !isStartDate) {
-                      minutesFromStart = 0;
-                      durationMinutes = (END_HOUR - START_HOUR) * 60;
-                    } else {
-                      const [hour, minute] = booking.time.split(':').map(Number);
-                      minutesFromStart = (hour - START_HOUR) * 60 + minute;
-                      durationMinutes = serviceInfo ? serviceInfo.duration : 60;
-                    }
-
-                    const leftPercent = (minutesFromStart / totalMinutes) * 100;
-                    const widthPercent = (durationMinutes / totalMinutes) * 100;
-
-                    if (leftPercent < 0 || leftPercent >= 100) return null;
-
-                    const statusColorClass =
-                      timelineStatusColors[booking.status] || 'bg-gray-500 border-gray-700';
-
-                    return (
-                      <div
-                        key={booking.id}
-                        className={`absolute top-2 h-16 ${statusColorClass} rounded-lg p-2 text-white shadow-md overflow-hidden border-l-4`}
-                        style={{
-                          left: `${leftPercent}%`,
-                          width: `${widthPercent}%`,
-                        }}
-                        title={`${booking.name} - ${booking.service} @ ${booking.time} [Status: ${booking.status}]`}
-                      >
-                        <p className="text-xs font-bold truncate">{booking.name}</p>
-                        <p className="text-[10px] opacity-80 truncate">{booking.service}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {filteredBookings.length === 0 && (
-        <div className="text-center py-10 text-gray-500 dark:text-gray-400">
-          Tidak ada jadwal pekerjaan untuk tanggal ini.
-        </div>
-      )}
-    </div>
-  );
-};
-
-const BarChart: React.FC<{
-  data: { label: string; value: number }[];
-  title: string;
-}> = ({ data, title }) => {
-  const maxValue = Math.max(...data.map((d) => d.value), 1);
-  const colors = ['#14B8A6', '#2DD4BF', '#5EEAD4', '#99F6E4', '#CCFBF1'];
-  return (
-    <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg">
-      <h3 className="font-bold text-xl text-gray-800 dark:text-white mb-4">{title}</h3>
-      <div className="space-y-3">
-        {data.map((item, index) => (
-          <div key={item.label}>
-            <div className="flex justify-between text-sm mb-1">
-              <span className="font-semibold text-gray-700 dark:text-gray-200 truncate pr-2">
-                {item.label}
-              </span>
-              <span className="font-bold text-primary">{item.value}</span>
-            </div>
-            <div className="h-4 bg-gray-200 dark:bg-slate-700 rounded-full">
-              <div
-                className="h-4 rounded-full"
-                style={{
-                  width: `${(item.value / maxValue) * 100}%`,
-                  backgroundColor: colors[index % colors.length],
-                }}
-                title={`${item.label}: ${item.value}`}
-              ></div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const PieChart: React.FC<{
-  data: { label: string; value: number }[];
-  title: string;
-}> = ({ data, title }) => {
-  const total = data.reduce((sum, item) => sum + item.value, 0);
-  if (total === 0) return null;
-  let accumulatedPercentage = 0;
-  const gradients = data.map((item) => {
-    const color = statusColors[item.label as BookingStatus]
-      ? `var(--tw-color-${
-          statusColors[item.label as BookingStatus].match(/(\w+)-100/)?.[1]
-        }-500, #ccc)`
-      : '#ccc';
-    const percentage = (item.value / total) * 100;
-    const start = accumulatedPercentage;
-    accumulatedPercentage += percentage;
-    const end = accumulatedPercentage;
-    return `${color} ${start}% ${end}%`;
-  });
-
-  return (
-    <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg">
-      <h3 className="font-bold text-xl text-gray-800 dark:text-white mb-4">{title}</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-        <div
-          className="w-40 h-40 rounded-full mx-auto"
-          style={{ background: `conic-gradient(${gradients.join(', ')})` }}
-          role="img"
-          aria-label={`Pie chart showing: ${data
-            .map((d) => `${d.label} ${((d.value / total) * 100).toFixed(1)}%`)
-            .join(', ')}`}
-        ></div>
-        <div className="space-y-2">
-          {data.map((item) => (
-            <div key={item.label} className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`w-3 h-3 rounded-full ${
-                    statusColors[item.label as BookingStatus]
-                      ?.replace('text-', 'bg-')
-                      .replace(/-\d+$/, '-500') || 'bg-gray-400'
-                  }`}
-                ></span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {item.label}
-                </span>
-              </div>
-              <span className="font-bold text-gray-800 dark:text-white">{item.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
+// komponen pecahan
+import AdminBookingsSection from '@/components/admin/booking/AdminBookingSection';
+import BarChart from '../components/admin/charts/BarChart';
+import PieChart from '../components/admin/charts/PieChart';
+import TechnicianFormModal from '../components/admin/modals/TechnicianFormModal';
+import TechnicianSchedule from '../components/admin/schedule/TechnicianSchedule';
 
 type AdminSection =
   | 'kpi'
@@ -970,11 +66,23 @@ type AdminSection =
   | 'services'
   | 'availability';
 
+const statuses: BookingStatus[] = ['Confirmed', 'On Site', 'In Progress', 'Completed', 'Cancelled'];
+
+const formatDuration = (minutes: number): string => {
+  if (!minutes) return '-';
+  if (minutes < 60) return `${minutes} mnt`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (remainingMinutes === 0) return `${hours} jam`;
+  return `${hours} jam ${remainingMinutes} mnt`;
+};
+
 const AdminPage: React.FC = () => {
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [services, setServices] = useState<ServiceCategory[]>([]);
-  const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [roles, setRoles] = useState<UserRole[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [roles, setRoles] = useState<{ id: number; name: string }[]>([]);
+  const [serviceCategories, setServiceCategories] = useState<ServiceMasterCategory[]>([]);
   const [activeSection, setActiveSection] = useState<AdminSection>('kpi');
   const [expandedBookingId, setExpandedBookingId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -1011,8 +119,8 @@ const AdminPage: React.FC = () => {
   } | null>(null);
 
   const [isTechnicianModalOpen, setIsTechnicianModalOpen] = useState(false);
-  const [technicianToEdit, setTechnicianToEdit] = useState<User | null>(null);
-  const [technicianToDelete, setTechnicianToDelete] = useState<User | null>(null);
+  const [technicianToEdit, setTechnicianToEdit] = useState<any | null>(null);
+  const [technicianToDelete, setTechnicianToDelete] = useState<any | null>(null);
   const [isAddBookingModalOpen, setIsAddBookingModalOpen] = useState(false);
 
   const [confirmationState, setConfirmationState] = useState<{
@@ -1036,6 +144,7 @@ const AdminPage: React.FC = () => {
   const [techScheduleError, setTechScheduleError] = useState<string | null>(null);
 
   const ITEMS_PER_PAGE_BOOKING = ITEMS_PER_PAGE;
+  const [statusDraft, setStatusDraft] = useState<Record<number, BookingStatus>>({});
 
   const availableTimes = useMemo(() => generateTimeSlots(9, 17, 12, 13, 30), []);
   const technicians = useMemo(() => allUsers.filter((u) => u.role === 'technician'), [allUsers]);
@@ -1050,11 +159,7 @@ const AdminPage: React.FC = () => {
     return map;
   }, [services]);
 
-  // draft status per booking (dipilih di select, tapi belum dikirim ke API)
-  const [statusDraft, setStatusDraft] = useState<Record<number, BookingStatus>>({});
-
   const loadData = useCallback(async () => {
-    // Booking list dari API
     try {
       const bookingsFromApi = await fetchBookingsFromApi();
       setBookings(bookingsFromApi);
@@ -1065,7 +170,6 @@ const AdminPage: React.FC = () => {
       setBookings(localBookings);
     }
 
-    // Services dari API, fallback ke local storage / config
     try {
       const servicesFromApi = await fetchServicesFromApi();
       setServices(servicesFromApi);
@@ -1091,6 +195,14 @@ const AdminPage: React.FC = () => {
       console.error('Gagal memuat data role dari server', err);
       setRoles([]);
     }
+
+    try {
+      const categoriesFromApi = await fetchServiceCategoriesFromApi();
+      setServiceCategories(categoriesFromApi);
+    } catch (err) {
+      console.error('Gagal memuat master kategori layanan dari server', err);
+      setServiceCategories([]);
+    }
   }, []);
 
   const loadTechSchedule = useCallback(async (date: Date) => {
@@ -1098,28 +210,8 @@ const AdminPage: React.FC = () => {
       setIsLoadingTechSchedule(true);
       setTechScheduleError(null);
 
-      const dateStr = formatDateForApi(date);
-      const res = await fetch(
-        `${API_BASE_URL}/admin/tech-schedule?schedule_date=${encodeURIComponent(dateStr)}`,
-        { credentials: 'include' },
-      );
-
-      if (!res.ok) {
-        throw new Error(`Gagal fetch tech schedule: ${res.status}`);
-      }
-
-      const json = await res.json();
-      const data = Array.isArray(json.data) ? json.data : [];
-
-      setTechSchedules(
-        data.map(
-          (row: any): ApiTechScheduleByUser => ({
-            user_id: row.user_id,
-            fullname: row.fullname,
-            schedules: Array.isArray(row.schedules) ? row.schedules : [],
-          }),
-        ),
-      );
+      const data = await fetchTechScheduleFromApi(date);
+      setTechSchedules(data);
     } catch (err: any) {
       console.error('Error loadTechSchedule:', err);
       setTechSchedules([]);
@@ -1129,6 +221,7 @@ const AdminPage: React.FC = () => {
     }
   }, []);
 
+  // init
   useEffect(() => {
     loadData();
 
@@ -1147,7 +240,7 @@ const AdminPage: React.FC = () => {
     };
   }, [loadData]);
 
-  // init/update draft status ketika bookings berubah (tanpa overwrite manual yang sudah diubah)
+  // sync statusDraft
   useEffect(() => {
     setStatusDraft((prev) => {
       const next = { ...prev };
@@ -1160,6 +253,7 @@ const AdminPage: React.FC = () => {
     });
   }, [bookings]);
 
+  // detect ada perubahan availability
   useEffect(() => {
     const fullyBookedChanged =
       JSON.stringify(Array.from(originalFullyBooked).sort()) !==
@@ -1170,12 +264,14 @@ const AdminPage: React.FC = () => {
     setHasUnsavedChanges(fullyBookedChanged || bookedSlotsChanged);
   }, [draftFullyBooked, draftBookedSlots, originalFullyBooked, originalBookedSlots]);
 
+  // load jadwal ketika buka tab schedule atau ganti tanggal
   useEffect(() => {
     if (activeSection === 'schedule' && scheduleDate) {
       loadTechSchedule(scheduleDate);
     }
   }, [activeSection, scheduleDate, loadTechSchedule]);
 
+  // filter bookings
   const filteredBookings = useMemo(() => {
     return bookings
       .filter((booking) => {
@@ -1203,11 +299,13 @@ const AdminPage: React.FC = () => {
     setCurrentPage(1);
   }, [searchTerm, statusFilter, technicianFilter]);
 
-  const upcomingJobs = useMemo(() => {
-    return bookings
-      .filter((b) => b.status === 'Confirmed' || b.status === 'On Site')
-      .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
-  }, [bookings]);
+  const upcomingJobs = useMemo(
+    () =>
+      bookings
+        .filter((b) => b.status === 'Confirmed' || b.status === 'On Site')
+        .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()),
+    [bookings],
+  );
 
   useEffect(() => {
     if (activeSection === 'map' && upcomingJobs.length > 0 && !selectedLocation) {
@@ -1221,9 +319,7 @@ const AdminPage: React.FC = () => {
     }
   }, [activeSection, upcomingJobs, selectedLocation]);
 
-  // === UPDATE BOOKING ===
-
-  // onChange untuk teknisi (langsung simpan)
+  // ==== HANDLER BOOKING / STATUS ====
   const handleBookingUpdate = (id: number, field: 'technician', value: string) => {
     if (field === 'technician') {
       const originalBooking = bookings.find((b) => b.id === id);
@@ -1255,7 +351,6 @@ const AdminPage: React.FC = () => {
     }
   };
 
-  // klik tombol "Update Status"
   const handleStatusSubmit = (id: number) => {
     const bookingToUpdate = bookings.find((b) => b.id === id);
     if (!bookingToUpdate) return;
@@ -1316,10 +411,7 @@ const AdminPage: React.FC = () => {
       const nextStatus = value as BookingStatus;
 
       try {
-        if (!booking.formId) {
-          console.warn('Booking belum punya formId, hanya update lokal.');
-        } else {
-          // cari user_id teknisi: prioritas dari booking.technicianUserId, fallback dari allUsers by name
+        if (booking.formId) {
           const techUserIdFromBooking = booking.technicianUserId ?? null;
           const techUserFromList = allUsers.find((u) => u.name === booking.technician);
           const userId = techUserIdFromBooking ?? techUserFromList?.id;
@@ -1333,7 +425,6 @@ const AdminPage: React.FC = () => {
             return;
           }
 
-          // kirim ke backend (PUT + user_id)
           await updateBookingStatusOnServer(booking.formId, nextStatus, userId);
         }
 
@@ -1368,6 +459,7 @@ const AdminPage: React.FC = () => {
     closeConfirmationModal();
   };
 
+  // ==== HANDLER AVAILABILITY ====
   const handleToggleFullDay = () => {
     if (!selectedDate) return;
     const dateKey = formatDateToKey(selectedDate);
@@ -1409,6 +501,272 @@ const AdminPage: React.FC = () => {
     setDraftFullyBooked(newDraft);
   };
 
+  // ==== HANDLER SERVICE ====
+  const handleOpenAddService = () => {
+    setServiceToEdit(null);
+    setCategoryToEdit(null);
+    setIsServiceModalOpen(true);
+  };
+
+  const handleOpenEditService = (service: Service, categoryName: string) => {
+    setServiceToEdit(service);
+    setCategoryToEdit(categoryName);
+    setIsServiceModalOpen(true);
+  };
+
+  const handleSaveService = (serviceData: Service, categoryName: string) => {
+    const applyLocalUpdate = () => {
+      let newServices = JSON.parse(JSON.stringify(services)) as ServiceCategory[];
+
+      if (serviceToEdit && categoryToEdit) {
+        const oldCategory = newServices.find((c) => c.category === categoryToEdit);
+        if (oldCategory) {
+          oldCategory.services = oldCategory.services.filter((s) => s.name !== serviceToEdit.name);
+          if (oldCategory.services.length === 0) {
+            newServices = newServices.filter((c) => c.category !== categoryToEdit);
+          }
+        }
+      }
+
+      let targetCategory = newServices.find((c) => c.category === categoryName);
+      if (targetCategory) {
+        const existingServiceIndex = targetCategory.services.findIndex(
+          (s) => s.name === serviceData.name,
+        );
+        if (existingServiceIndex > -1) {
+          targetCategory.services[existingServiceIndex] = serviceData;
+        } else {
+          targetCategory.services.push(serviceData);
+        }
+      } else {
+        newServices.push({
+          category: categoryName,
+          services: [serviceData],
+        });
+      }
+
+      setServices(newServices);
+      saveServices(newServices);
+    };
+
+    // EDIT: lokal
+    if (serviceToEdit) {
+      applyLocalUpdate();
+      setIsServiceModalOpen(false);
+      addNotification(`Layanan "${serviceData.name}" berhasil diperbarui.`, 'success');
+      return;
+    }
+
+    // CREATE: panggil API + kirim service_category_id
+    (async () => {
+      try {
+        const anyService = serviceData as any;
+
+        const durationMinutes =
+          anyService.duration_minute ??
+          (typeof serviceData.duration === 'number' ? serviceData.duration : 0);
+
+        const durationHours =
+          anyService.duration_hour ??
+          (typeof serviceData.duration === 'number' ? Math.floor(serviceData.duration / 60) : 0);
+
+        const masterCategory = serviceCategories.find((c) => c.name === categoryName);
+
+        const payload = {
+          name: serviceData.name,
+          price: String(serviceData.price ?? 0),
+          unit_price: serviceData.priceUnit ?? 'unit',
+          point: anyService.point ?? 0,
+          icon: serviceData.icon,
+          service_category_id: masterCategory ? masterCategory.id : null,
+          duration_minute: durationMinutes,
+          duration_hour: durationHours,
+          is_guarantee: anyService.is_guarantee ?? false,
+        };
+
+        const res = await fetch('http://localhost:4222/api/v1/admin/service-store', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `Gagal menyimpan layanan: ${res.status}`);
+        }
+
+        applyLocalUpdate();
+        setIsServiceModalOpen(false);
+        addNotification(`Layanan "${serviceData.name}" berhasil disimpan ke server.`, 'success');
+      } catch (error) {
+        console.error('Error saat menyimpan layanan ke server:', error);
+        addNotification(
+          'Gagal menyimpan layanan ke server. Silakan cek koneksi atau coba lagi.',
+          'error',
+        );
+      }
+    })();
+  };
+
+  const handleDeleteService = () => {
+    if (!serviceToDelete) return;
+
+    const { serviceName, categoryName } = serviceToDelete;
+    let newServices = JSON.parse(JSON.stringify(services)) as ServiceCategory[];
+
+    const category = newServices.find((c) => c.category === categoryName);
+    if (category) {
+      category.services = category.services.filter((s) => s.name !== serviceName);
+      if (category.services.length === 0) {
+        newServices = newServices.filter((c) => c.category !== categoryName);
+      }
+    }
+
+    setServices(newServices);
+    saveServices(newServices);
+    setServiceToDelete(null);
+    addNotification(`Layanan "${serviceName}" telah dihapus.`, 'success');
+  };
+
+  // ==== HANDLER TECHNICIAN ====
+  const handleOpenAddTechnician = () => {
+    setTechnicianToEdit(null);
+    setIsTechnicianModalOpen(true);
+  };
+
+  const handleOpenEditTechnician = (tech: any) => {
+    setTechnicianToEdit(tech);
+    setIsTechnicianModalOpen(true);
+  };
+
+  const handleSaveTechnician = async (technicianData: any) => {
+    const selectedRole = roles.find((r) => r.name === technicianData.role);
+    if (!selectedRole) {
+      addNotification('Role user tidak valid. Silakan refresh halaman.', 'error');
+      return;
+    }
+
+    if (technicianToEdit) {
+      const updatedUsers = allUsers.map((u) =>
+        u.id === technicianToEdit.id
+          ? {
+              ...u,
+              ...technicianData,
+              password: technicianData.password || u.password,
+            }
+          : u,
+      );
+      setAllUsers(updatedUsers);
+      setIsTechnicianModalOpen(false);
+      addNotification(`User "${technicianData.name}" berhasil diperbarui.`, 'success');
+    } else {
+      try {
+        const res = await fetch('http://localhost:4222/api/v1/admin/user-management-store', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            fullname: technicianData.name,
+            username: technicianData.username,
+            password: technicianData.password,
+            role_id: selectedRole.id,
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Gagal menyimpan user: ${res.status}`);
+        }
+
+        const json = await res.json();
+
+        const newIdFromApi =
+          (json?.data && json.data.id) ||
+          json.id ||
+          (allUsers.length > 0 ? Math.max(...allUsers.map((u) => u.id)) + 1 : 1);
+
+        const newUser: any = {
+          id: newIdFromApi,
+          name: technicianData.name,
+          username: technicianData.username,
+          role: technicianData.role || selectedRole.name,
+          created_at: json?.data?.created_at,
+        };
+
+        setAllUsers((prev) => [...prev, newUser]);
+        setIsTechnicianModalOpen(false);
+        addNotification(`User "${newUser.name}" berhasil disimpan ke server.`, 'success');
+      } catch (error) {
+        console.error('Error saat menyimpan user baru:', error);
+        addNotification(
+          'Gagal menyimpan user ke server. Silakan cek koneksi atau coba lagi.',
+          'error',
+        );
+      }
+    }
+  };
+
+  const handleDeleteTechnician = () => {
+    if (!technicianToDelete) return;
+    const updatedUsers = allUsers.filter((u) => u.id !== technicianToDelete.id);
+    setAllUsers(updatedUsers);
+    setTechnicianToDelete(null);
+    addNotification(`User "${technicianToDelete.name}" telah dihapus.`, 'success');
+  };
+
+  // ==== HANDLER BOOKING BARU ====
+  const handleSaveNewBooking = (
+    newBookingData: Omit<AdminBooking, 'id' | 'formId' | 'applyId'>,
+  ) => {
+    const allBookings = getBookings() as AdminBooking[];
+    const newBooking: AdminBooking = {
+      ...newBookingData,
+      id: allBookings.length > 0 ? Math.max(...allBookings.map((b) => b.id)) + 1 : 1,
+    };
+
+    const updatedBookings = [...allBookings, newBooking];
+    saveBookings(updatedBookings);
+    setBookings(updatedBookings);
+
+    const service = servicesMap.get(newBooking.service);
+    const durationDays = service?.durationDays || 1;
+
+    const currentAvailability = getAvailability();
+    const newBookedSlots = [
+      ...(currentAvailability.bookedSlots || []),
+      `${formatDateToKey(new Date(newBooking.startDate))}-${newBooking.time}`,
+    ];
+    let newFullyBookedDates = [...currentAvailability.fullyBookedDates];
+
+    if (durationDays > 1) {
+      const datesToBlock = new Set(newFullyBookedDates);
+      const startDate = new Date(newBooking.startDate);
+      const endDate = new Date(newBooking.endDate);
+      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        datesToBlock.add(formatDateToKey(d));
+      }
+      newFullyBookedDates = Array.from(datesToBlock);
+    }
+
+    saveAvailability({
+      fullyBookedDates: newFullyBookedDates,
+      bookedSlots: newBookedSlots,
+    });
+
+    setOriginalFullyBooked(new Set(newFullyBookedDates));
+    setDraftFullyBooked(new Set(newFullyBookedDates));
+    setOriginalBookedSlots(new Set(newBookedSlots));
+    setDraftBookedSlots(new Set(newBookedSlots));
+
+    addNotification(`Booking baru untuk ${newBooking.name} berhasil ditambahkan.`, 'success');
+    setIsAddBookingModalOpen(false);
+  };
+
+  // ==== KPI DATA ====
   const kpiData = useMemo(() => {
     const techKpis: {
       [key: string]: { completed: number; totalMinutes: number };
@@ -1457,306 +815,7 @@ const AdminPage: React.FC = () => {
     return { technicianPerformance, popularServices, statusDistribution };
   }, [bookings, technicians]);
 
-  const formatSchedule = (startDate: string, endDate: string, time: string) => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const options: Intl.DateTimeFormatOptions = {
-      day: '2-digit',
-      month: 'short',
-    };
-
-    if (start.toDateString() === end.toDateString()) {
-      return `${start.toLocaleDateString('id-ID', {
-        ...options,
-        year: 'numeric',
-      })}, ${time}`;
-    }
-
-    return `${start.toLocaleDateString('id-ID', options)} - ${end.toLocaleDateString('id-ID', {
-      ...options,
-      year: 'numeric',
-    })}`;
-  };
-
-  const handleOpenAddService = () => {
-    setServiceToEdit(null);
-    setCategoryToEdit(null);
-    setIsServiceModalOpen(true);
-  };
-
-  const handleOpenEditService = (service: Service, categoryName: string) => {
-    setServiceToEdit(service);
-    setCategoryToEdit(categoryName);
-    setIsServiceModalOpen(true);
-  };
-
-  // ==========================
-  //   SIMPAN LAYANAN (SERVICE)
-  //   - EDIT: hanya lokal
-  //   - CREATE: call POST http://localhost:4000/api/v1/admin/service-store + update lokal
-  // ==========================
-  const handleSaveService = (serviceData: Service, categoryName: string) => {
-    // helper untuk update state lokal + localStorage
-    const applyLocalUpdate = () => {
-      let newServices = JSON.parse(JSON.stringify(services)) as ServiceCategory[];
-
-      if (serviceToEdit && categoryToEdit) {
-        const oldCategory = newServices.find((c) => c.category === categoryToEdit);
-        if (oldCategory) {
-          oldCategory.services = oldCategory.services.filter((s) => s.name !== serviceToEdit.name);
-          if (oldCategory.services.length === 0) {
-            newServices = newServices.filter((c) => c.category !== categoryToEdit);
-          }
-        }
-      }
-
-      let targetCategory = newServices.find((c) => c.category === categoryName);
-      if (targetCategory) {
-        const existingServiceIndex = targetCategory.services.findIndex(
-          (s) => s.name === serviceData.name,
-        );
-        if (existingServiceIndex > -1) {
-          targetCategory.services[existingServiceIndex] = serviceData;
-        } else {
-          targetCategory.services.push(serviceData);
-        }
-      } else {
-        newServices.push({
-          category: categoryName,
-          services: [serviceData],
-        });
-      }
-
-      setServices(newServices);
-      saveServices(newServices);
-    };
-
-    // EDIT MODE -> sementara hanya update lokal dulu
-    if (serviceToEdit) {
-      applyLocalUpdate();
-      setIsServiceModalOpen(false);
-      addNotification(`Layanan "${serviceData.name}" berhasil diperbarui.`, 'success');
-      return;
-    }
-
-    // CREATE MODE -> call API service-store (port 4000)
-    (async () => {
-      try {
-        const anyService = serviceData as any;
-
-        const durationMinutes =
-          anyService.duration_minute ??
-          (typeof serviceData.duration === 'number' ? serviceData.duration : 0);
-
-        const durationHours =
-          anyService.duration_hour ??
-          (typeof serviceData.duration === 'number' ? Math.floor(serviceData.duration / 60) : 0);
-
-        const payload = {
-          name: serviceData.name,
-          price: String(serviceData.price ?? 0),
-          unit_price: serviceData.priceUnit ?? 'unit',
-          point: anyService.point ?? 0,
-          icon: serviceData.icon,
-          service_category: categoryName,
-          duration_minute: durationMinutes,
-          duration_hour: durationHours,
-          is_guarantee: anyService.is_guarantee ?? false,
-        };
-
-        const res = await fetch(`http://localhost:4222/api/v1/admin/service-store`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify(payload),
-        });
-
-        if (!res.ok) {
-          const text = await res.text().catch(() => '');
-          throw new Error(text || `Gagal menyimpan layanan: ${res.status}`);
-        }
-
-        // kalau backend kirim data & kamu mau pakai (misal id), bisa parse di sini:
-        // const json = await res.json().catch(() => null);
-
-        applyLocalUpdate();
-        setIsServiceModalOpen(false);
-        addNotification(`Layanan "${serviceData.name}" berhasil disimpan ke server.`, 'success');
-      } catch (error) {
-        console.error('Error saat menyimpan layanan ke server:', error);
-        addNotification(
-          'Gagal menyimpan layanan ke server. Silakan cek koneksi atau coba lagi.',
-          'error',
-        );
-      }
-    })();
-  };
-
-  const handleDeleteService = () => {
-    if (!serviceToDelete) return;
-
-    const { serviceName, categoryName } = serviceToDelete;
-    let newServices = JSON.parse(JSON.stringify(services)) as ServiceCategory[];
-
-    const category = newServices.find((c) => c.category === categoryName);
-    if (category) {
-      category.services = category.services.filter((s) => s.name !== serviceName);
-      if (category.services.length === 0) {
-        newServices = newServices.filter((c) => c.category !== categoryName);
-      }
-    }
-
-    setServices(newServices);
-    saveServices(newServices);
-    setServiceToDelete(null);
-    addNotification(`Layanan "${serviceName}" telah dihapus.`, 'success');
-  };
-
-  // --- Technician Management Handlers ---
-  const handleOpenAddTechnician = () => {
-    setTechnicianToEdit(null);
-    setIsTechnicianModalOpen(true);
-  };
-
-  const handleOpenEditTechnician = (tech: User) => {
-    setTechnicianToEdit(tech);
-    setIsTechnicianModalOpen(true);
-  };
-
-  // ADD / EDIT USER + CALL API STORE-USER
-  const handleSaveTechnician = async (technicianData: User) => {
-    const selectedRole = roles.find((r) => r.name === technicianData.role);
-    if (!selectedRole) {
-      addNotification('Role user tidak valid. Silakan refresh halaman.', 'error');
-      return;
-    }
-
-    if (technicianToEdit) {
-      // EDIT (lokal; bisa dihubungkan ke API update jika sudah ada)
-      const updatedUsers = allUsers.map((u) =>
-        u.id === technicianToEdit.id
-          ? {
-              ...u,
-              ...technicianData,
-              password: technicianData.password || u.password,
-            }
-          : u,
-      );
-      setAllUsers(updatedUsers);
-      setIsTechnicianModalOpen(false);
-      addNotification(`User "${technicianData.name}" berhasil diperbarui.`, 'success');
-    } else {
-      // CREATE -> panggil API: fullname, username, password, role_id
-      try {
-        const res = await fetch(`${API_BASE_URL}/admin/user-management-store`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            fullname: technicianData.name,
-            username: technicianData.username,
-            password: technicianData.password,
-            role_id: selectedRole.id,
-          }),
-        });
-
-        if (!res.ok) {
-          throw new Error(`Gagal menyimpan user: ${res.status}`);
-        }
-
-        const json = await res.json();
-
-        const newIdFromApi =
-          (json?.data && json.data.id) ||
-          json.id ||
-          (allUsers.length > 0 ? Math.max(...allUsers.map((u) => u.id)) + 1 : 1);
-
-        const newUser: User = {
-          id: newIdFromApi,
-          name: technicianData.name,
-          username: technicianData.username,
-          role: technicianData.role || selectedRole.name,
-          created_at: json?.data?.created_at,
-        };
-
-        setAllUsers((prev) => [...prev, newUser]);
-        setIsTechnicianModalOpen(false);
-        addNotification(`User "${newUser.name}" berhasil disimpan ke server.`, 'success');
-      } catch (error) {
-        console.error('Error saat menyimpan user baru:', error);
-        addNotification(
-          'Gagal menyimpan user ke server. Silakan cek koneksi atau coba lagi.',
-          'error',
-        );
-      }
-    }
-  };
-
-  const handleDeleteTechnician = () => {
-    if (!technicianToDelete) return;
-    const updatedUsers = allUsers.filter((u) => u.id !== technicianToDelete.id);
-    setAllUsers(updatedUsers);
-    // TODO: sambungkan dengan API DELETE ke backend
-    setTechnicianToDelete(null);
-    addNotification(`User "${technicianToDelete.name}" telah dihapus.`, 'success');
-  };
-
-  const handleSaveNewBooking = (
-    newBookingData: Omit<AdminBooking, 'id' | 'formId' | 'applyId'>,
-  ) => {
-    const allBookings = getBookings() as AdminBooking[];
-    const newBooking: AdminBooking = {
-      ...newBookingData,
-      id: allBookings.length > 0 ? Math.max(...allBookings.map((b) => b.id)) + 1 : 1,
-    };
-
-    const updatedBookings = [...allBookings, newBooking];
-    saveBookings(updatedBookings);
-    setBookings(updatedBookings);
-
-    const service = servicesMap.get(newBooking.service);
-    const durationDays = service?.durationDays || 1;
-
-    const currentAvailability = getAvailability();
-    const newBookedSlots = [
-      ...(currentAvailability.bookedSlots || []),
-      `${formatDateToKey(new Date(newBooking.startDate))}-${newBooking.time}`,
-    ];
-    let newFullyBookedDates = [...currentAvailability.fullyBookedDates];
-
-    if (durationDays > 1) {
-      const datesToBlock = new Set(newFullyBookedDates);
-      const startDate = new Date(newBooking.startDate);
-      const endDate = new Date(newBooking.endDate);
-      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-        datesToBlock.add(formatDateToKey(d));
-      }
-      newFullyBookedDates = Array.from(datesToBlock);
-    }
-
-    saveAvailability({
-      fullyBookedDates: newFullyBookedDates,
-      bookedSlots: newBookedSlots,
-    });
-
-    setOriginalFullyBooked(new Set(newFullyBookedDates));
-    setDraftFullyBooked(new Set(newFullyBookedDates));
-    setOriginalBookedSlots(new Set(newBookedSlots));
-    setDraftBookedSlots(new Set(newBookedSlots));
-
-    addNotification(`Booking baru untuk ${newBooking.name} berhasil ditambahkan.`, 'success');
-    setIsAddBookingModalOpen(false);
-  };
-
-  const technicianDropdownOptions = useMemo(() => {
-    return technicians.map((t) => t.name).concat(['Belum Ditugaskan']);
-  }, [technicians]);
-
-  // Booking khusus untuk view "Jadwal Teknisi" (dari API tech-schedule)
+  // Jadwal teknisi dari API
   const scheduleBookings: AdminBooking[] = useMemo(() => {
     const result: AdminBooking[] = [];
 
@@ -1799,7 +858,7 @@ const AdminPage: React.FC = () => {
     return result;
   }, [techSchedules]);
 
-  const scheduleTechnicians: User[] = useMemo(() => {
+  const scheduleTechnicians = useMemo(() => {
     if (techSchedules.length > 0) {
       return techSchedules.map((t) => ({
         id: t.user_id,
@@ -1810,6 +869,13 @@ const AdminPage: React.FC = () => {
     }
     return technicians;
   }, [techSchedules, technicians]);
+
+  const allCategoryNames = useMemo(() => {
+    const fromApi = serviceCategories.map((c) => c.name);
+    if (fromApi.length > 0) return fromApi;
+    const fromServices = services.map((c) => c.category);
+    return Array.from(new Set(fromServices));
+  }, [serviceCategories, services]);
 
   const sectionTitles: Record<AdminSection, string> = {
     kpi: 'Dashboard KPI',
@@ -1825,566 +891,31 @@ const AdminPage: React.FC = () => {
     switch (activeSection) {
       case 'bookings':
         return (
-          <div key="bookings">
-            <div className="mb-6 bg-white dark:bg-slate-800 p-4 rounded-xl shadow-md">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="relative">
-                  <label htmlFor="search-booking" className="sr-only">
-                    Cari Pelanggan
-                  </label>
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                  <input
-                    id="search-booking"
-                    type="text"
-                    placeholder="Cari nama pelanggan..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 focus:ring-primary focus:border-primary"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="status-filter" className="sr-only">
-                    Filter Status
-                  </label>
-                  <select
-                    id="status-filter"
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 focus:ring-primary focus:border-primary"
-                  >
-                    <option value="all">Semua Status</option>
-                    {statuses.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="technician-filter" className="sr-only">
-                    Filter Teknisi
-                  </label>
-                  <select
-                    id="technician-filter"
-                    value={technicianFilter}
-                    onChange={(e) => setTechnicianFilter(e.target.value)}
-                    className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 focus:ring-primary focus:border-primary"
-                  >
-                    <option value="all">Semua Teknisi</option>
-                    {technicianDropdownOptions.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl">
-              {/* Mobile & Tablet Card View */}
-              <div className="md:hidden">
-                {paginatedBookings.length > 0 ? (
-                  paginatedBookings.map((booking) => {
-                    const draftStatus = statusDraft[booking.id] ?? booking.status;
-                    const statusChanged = draftStatus !== booking.status;
-
-                    return (
-                      <div
-                        key={booking.id}
-                        className="p-4 border-b border-gray-200 dark:border-slate-700"
-                      >
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <p className="font-bold text-gray-900 dark:text-white">
-                              {booking.name}
-                            </p>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                              {booking.whatsapp}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <WhatsAppButton booking={booking} />
-                            <button
-                              onClick={() =>
-                                setExpandedBookingId(
-                                  expandedBookingId === booking.id ? null : booking.id,
-                                )
-                              }
-                              className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700"
-                            >
-                              <ChevronDown
-                                className={`h-5 w-5 transition-transform text-gray-500 dark:text-gray-400 ${
-                                  expandedBookingId === booking.id ? 'rotate-180' : ''
-                                }`}
-                              />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3 text-sm">
-                          <p>
-                            <strong className="font-semibold text-gray-600 dark:text-gray-300">
-                              Layanan:
-                            </strong>{' '}
-                            {booking.service}
-                          </p>
-                          <p>
-                            <strong className="font-semibold text-gray-600 dark:text-gray-300">
-                              Jadwal:
-                            </strong>{' '}
-                            {formatSchedule(booking.startDate, booking.endDate, booking.time)}
-                          </p>
-                          <div>
-                            <label className="font-semibold text-gray-600 dark:text-gray-300 block mb-1">
-                              Status:
-                            </label>
-                            <select
-                              value={draftStatus}
-                              onChange={(e) =>
-                                setStatusDraft((prev) => ({
-                                  ...prev,
-                                  [booking.id]: e.target.value as BookingStatus,
-                                }))
-                              }
-                              className={`text-sm font-medium w-full p-2 rounded-lg border-2 appearance-none ${statusColors[
-                                draftStatus
-                              ].replace('bg-', 'border-')} ${statusColors[draftStatus]}`}
-                            >
-                              {statuses.map((s) => (
-                                <option key={s} value={s}>
-                                  {s}
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              onClick={() => handleStatusSubmit(booking.id)}
-                              disabled={!statusChanged}
-                              className="mt-2 w-full inline-flex items-center justify-center gap-2 text-xs font-semibold rounded-full border border-primary text-primary hover:bg-primary hover:text-white disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 transition-colors"
-                            >
-                              Update Status
-                            </button>
-                          </div>
-                          <div>
-                            <label className="font-semibold text-gray-600 dark:text-gray-300 block mb-1">
-                              Teknisi:
-                            </label>
-                            <select
-                              value={booking.technician || 'Belum Ditugaskan'}
-                              onChange={(e) =>
-                                handleBookingUpdate(booking.id, 'technician', e.target.value)
-                              }
-                              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2 dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-primary focus:border-primary"
-                            >
-                              {technicianDropdownOptions.map((techName) => {
-                                const isAvailable = isTechnicianAvailable(
-                                  techName,
-                                  booking,
-                                  bookings,
-                                  servicesMap,
-                                );
-                                return (
-                                  <option key={techName} value={techName} disabled={!isAvailable}>
-                                    {techName}
-                                    {!isAvailable ? ' (Bentrok)' : ''}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                          </div>
-                        </div>
-
-                        {expandedBookingId === booking.id && (
-                          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-slate-700/50 space-y-4 text-sm text-gray-600 dark:text-gray-300">
-                            <div>
-                              <h4 className="font-bold text-gray-800 dark:text-gray-100 mb-1">
-                                Detail Pelanggan
-                              </h4>
-                              <p>
-                                <strong>Alamat:</strong> {booking.address}
-                              </p>
-                            </div>
-                            <div>
-                              <h4 className="font-bold text-gray-800 dark:text-gray-100 mb-1">
-                                Laporan Kerja
-                              </h4>
-                              <p>
-                                <strong>Tiba:</strong>{' '}
-                                {booking.arrivalTime
-                                  ? new Date(booking.arrivalTime).toLocaleString('id-ID', {
-                                      dateStyle: 'short',
-                                      timeStyle: 'medium',
-                                    })
-                                  : '-'}
-                              </p>
-                              <p>
-                                <strong>Mulai:</strong>{' '}
-                                {booking.startTime
-                                  ? new Date(booking.startTime).toLocaleString('id-ID', {
-                                      dateStyle: 'short',
-                                      timeStyle: 'medium',
-                                    })
-                                  : '-'}
-                              </p>
-                              <p>
-                                <strong>Selesai:</strong>{' '}
-                                {booking.endTime
-                                  ? new Date(booking.endTime).toLocaleString('id-ID', {
-                                      dateStyle: 'short',
-                                      timeStyle: 'medium',
-                                    })
-                                  : '-'}
-                              </p>
-                              <p>
-                                <strong>Durasi:</strong>{' '}
-                                {formatDuration(booking.workDurationMinutes || 0)}
-                              </p>
-                              <p>
-                                <strong>Biaya Tambahan:</strong> Rp
-                                {booking.additionalCosts?.toLocaleString('id-ID') || 0}
-                              </p>
-                              <p className="mt-1">
-                                <strong>Catatan:</strong>
-                                <br />
-                                {booking.additionalWorkNotes || '-'}
-                              </p>
-                            </div>
-                            <div>
-                              <h4 className="font-bold text-gray-800 dark:text-gray-100 mb-2">
-                                Bukti Foto
-                              </h4>
-                              <div className="flex flex-wrap gap-2">
-                                <BookingPhoto
-                                  photoKey={booking.photos?.arrival}
-                                  alt="Tiba"
-                                  label="Tiba"
-                                />
-                                <BookingPhoto
-                                  photoKey={booking.photos?.before}
-                                  alt="Sebelum"
-                                  label="Sebelum"
-                                />
-                                <BookingPhoto
-                                  photoKey={booking.photos?.after}
-                                  alt="Sesudah"
-                                  label="Sesudah"
-                                />
-                                {!booking.photos?.arrival &&
-                                  !booking.photos?.before &&
-                                  !booking.photos?.after && (
-                                    <p className="text-xs">Belum ada foto.</p>
-                                  )}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="text-center py-16 text-gray-500 dark:text-gray-400">
-                    Tidak ada data booking yang cocok.
-                  </div>
-                )}
-              </div>
-
-              {/* Desktop Table View */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
-                  <thead className="bg-gray-50 dark:bg-slate-700/50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Pelanggan
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Layanan
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Jadwal
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Teknisi
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                        Aksi
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
-                    {paginatedBookings.length > 0 ? (
-                      paginatedBookings.map((booking) => {
-                        const draftStatus = statusDraft[booking.id] ?? booking.status;
-                        const statusChanged = draftStatus !== booking.status;
-
-                        return (
-                          <React.Fragment key={booking.id}>
-                            <tr className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors align-top">
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="font-bold text-gray-900 dark:text-white">
-                                  {booking.name}
-                                </div>
-                                <div className="text-sm text-gray-500 dark:text-gray-400">
-                                  {booking.whatsapp}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300 max-w-xs truncate">
-                                {booking.service}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
-                                {formatSchedule(booking.startDate, booking.endDate, booking.time)}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm min-w-[180px]">
-                                <select
-                                  value={booking.technician || 'Belum Ditugaskan'}
-                                  onChange={(e) =>
-                                    handleBookingUpdate(booking.id, 'technician', e.target.value)
-                                  }
-                                  className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2 dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-primary focus:border-primary"
-                                >
-                                  {technicianDropdownOptions.map((techName) => {
-                                    const isAvailable = isTechnicianAvailable(
-                                      techName,
-                                      booking,
-                                      bookings,
-                                      servicesMap,
-                                    );
-                                    return (
-                                      <option
-                                        key={techName}
-                                        value={techName}
-                                        disabled={!isAvailable}
-                                      >
-                                        {techName}
-                                        {!isAvailable ? ' (Bentrok)' : ''}
-                                      </option>
-                                    );
-                                  })}
-                                </select>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap min-w-[220px]">
-                                <div className="flex flex-col gap-2">
-                                  <select
-                                    value={draftStatus}
-                                    onChange={(e) =>
-                                      setStatusDraft((prev) => ({
-                                        ...prev,
-                                        [booking.id]: e.target.value as BookingStatus,
-                                      }))
-                                    }
-                                    className={`text-sm font-medium w-full p-2 rounded-lg border-2 appearance-none ${statusColors[
-                                      draftStatus
-                                    ].replace('bg-', 'border-')} ${statusColors[draftStatus]}`}
-                                  >
-                                    {statuses.map((s) => (
-                                      <option key={s} value={s}>
-                                        {s}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <button
-                                    onClick={() => handleStatusSubmit(booking.id)}
-                                    disabled={!statusChanged}
-                                    className="inline-flex items-center justify-center gap-2 text-xs font-semibold rounded-full border border-primary text-primary hover:bg-primary hover:text-white disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 transition-colors"
-                                  >
-                                    Update Status
-                                  </button>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                                <div className="flex items-center justify-center gap-2">
-                                  <WhatsAppButton booking={booking} />
-                                  <button
-                                    onClick={() =>
-                                      setExpandedBookingId(
-                                        expandedBookingId === booking.id ? null : booking.id,
-                                      )
-                                    }
-                                    className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700"
-                                    title="Lihat Detail"
-                                  >
-                                    <ChevronDown
-                                      className={`h-5 w-5 transition-transform text-gray-500 dark:text-gray-400 ${
-                                        expandedBookingId === booking.id ? 'rotate-180' : ''
-                                      }`}
-                                    />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                            {expandedBookingId === booking.id && (
-                              <tr className="bg-light-bg dark:bg-slate-900/50">
-                                <td colSpan={6} className="p-4">
-                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-gray-600 dark:text-gray-300">
-                                    <div>
-                                      <h4 className="font-bold text-gray-800 dark:text-gray-100 mb-2">
-                                        Detail Pelanggan
-                                      </h4>
-                                      <p>
-                                        <strong>Alamat:</strong> {booking.address}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <h4 className="font-bold text-gray-800 dark:text-gray-100 mb-2">
-                                        Laporan Kerja
-                                      </h4>
-                                      <p>
-                                        <strong>Tiba:</strong>{' '}
-                                        {booking.arrivalTime
-                                          ? new Date(booking.arrivalTime).toLocaleString('id-ID', {
-                                              dateStyle: 'short',
-                                              timeStyle: 'medium',
-                                            })
-                                          : '-'}
-                                      </p>
-                                      <p>
-                                        <strong>Mulai:</strong>{' '}
-                                        {booking.startTime
-                                          ? new Date(booking.startTime).toLocaleString('id-ID', {
-                                              dateStyle: 'short',
-                                              timeStyle: 'medium',
-                                            })
-                                          : '-'}
-                                      </p>
-                                      <p>
-                                        <strong>Selesai:</strong>{' '}
-                                        {booking.endTime
-                                          ? new Date(booking.endTime).toLocaleString('id-ID', {
-                                              dateStyle: 'short',
-                                              timeStyle: 'medium',
-                                            })
-                                          : '-'}
-                                      </p>
-                                      <p>
-                                        <strong>Durasi:</strong>{' '}
-                                        {formatDuration(booking.workDurationMinutes || 0)}
-                                      </p>
-                                      <p>
-                                        <strong>Biaya Tambahan:</strong> Rp
-                                        {booking.additionalCosts?.toLocaleString('id-ID') || 0}
-                                      </p>
-                                      <p className="mt-2">
-                                        <strong>Catatan:</strong>
-                                        <br />
-                                        {booking.additionalWorkNotes || '-'}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <h4 className="font-bold text-gray-800 dark:text-gray-100 mb-2">
-                                        Bukti Foto
-                                      </h4>
-                                      <div className="flex flex-wrap gap-2">
-                                        <BookingPhoto
-                                          photoKey={booking.photos?.arrival}
-                                          alt="Tiba"
-                                          label="Tiba"
-                                        />
-                                        <BookingPhoto
-                                          photoKey={booking.photos?.before}
-                                          alt="Sebelum"
-                                          label="Sebelum"
-                                        />
-                                        <BookingPhoto
-                                          photoKey={booking.photos?.after}
-                                          alt="Sesudah"
-                                          label="Sesudah"
-                                        />
-                                        {!booking.photos?.arrival &&
-                                          !booking.photos?.before &&
-                                          !booking.photos?.after && (
-                                            <p className="text-xs">Belum ada foto.</p>
-                                          )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="text-center py-16 text-gray-500 dark:text-gray-400"
-                        >
-                          Tidak ada data booking yang cocok.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-gray-200 dark:border-slate-700 px-4 py-3 sm:px-6">
-                  <div className="flex-1 flex justify-between sm:hidden">
-                    <button
-                      onClick={() => goToPage(currentPage - 1)}
-                      disabled={currentPage === 1}
-                      className="relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-slate-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50"
-                    >
-                      Sebelumnya
-                    </button>
-                    <button
-                      onClick={() => goToPage(currentPage + 1)}
-                      disabled={currentPage === totalPages}
-                      className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-slate-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50"
-                    >
-                      Berikutnya
-                    </button>
-                  </div>
-                  <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm text-gray-700 dark:text-gray-300">
-                        Menampilkan{' '}
-                        <span className="font-medium">
-                          {(currentPage - 1) * ITEMS_PER_PAGE_BOOKING + 1}
-                        </span>{' '}
-                        -{' '}
-                        <span className="font-medium">
-                          {Math.min(currentPage * ITEMS_PER_PAGE_BOOKING, filteredBookings.length)}
-                        </span>{' '}
-                        dari <span className="font-medium">{filteredBookings.length}</span> hasil
-                      </p>
-                    </div>
-                    <div>
-                      <nav
-                        className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
-                        aria-label="Pagination"
-                      >
-                        <button
-                          onClick={() => goToPage(currentPage - 1)}
-                          disabled={currentPage === 1}
-                          className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-medium text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50"
-                        >
-                          <span className="sr-only">Previous</span>
-                          <ChevronLeft className="h-5 w-5" />
-                        </button>
-                        <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Halaman {currentPage} dari {totalPages}
-                        </span>
-                        <button
-                          onClick={() => goToPage(currentPage + 1)}
-                          disabled={currentPage === totalPages}
-                          className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-medium text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50"
-                        >
-                          <span className="sr-only">Next</span>
-                          <ChevronRight className="h-5 w-5" />
-                        </button>
-                      </nav>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          <AdminBookingsSection
+            paginatedBookings={paginatedBookings}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            goToPage={goToPage}
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            technicianFilter={technicianFilter}
+            setTechnicianFilter={setTechnicianFilter}
+            technicians={technicians}
+            statuses={statuses}
+            expandedBookingId={expandedBookingId}
+            setExpandedBookingId={setExpandedBookingId}
+            statusDraft={statusDraft}
+            setStatusDraft={setStatusDraft}
+            onStatusSubmit={handleStatusSubmit}
+            onTechnicianChange={handleBookingUpdate}
+          />
         );
+
       case 'schedule':
         return (
-          <div key="schedule" className="space-y-6">
+          <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-1 bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-6">
                 <h2 className="text-xl font-bold font-poppins text-gray-800 dark:text-white mb-1">
@@ -2428,9 +959,10 @@ const AdminPage: React.FC = () => {
             </div>
           </div>
         );
+
       case 'map':
         return (
-          <div key="map" className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
             <div className="lg:col-span-1 bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-4 space-y-3 h-full overflow-y-auto">
               <h2 className="text-xl font-bold font-poppins text-gray-800 dark:text-white p-2 sticky top-0 bg-white dark:bg-slate-800 z-10">
                 Pekerjaan Akan Datang
@@ -2505,57 +1037,10 @@ const AdminPage: React.FC = () => {
             </div>
           </div>
         );
-      case 'kpi':
-        return (
-          <div key="kpi" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <BarChart data={kpiData.popularServices} title="5 Layanan Terlaris (Selesai)" />
-              <PieChart data={kpiData.statusDistribution} title="Distribusi Status Pesanan" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold font-poppins text-gray-800 dark:text-white mb-4">
-                Performa Teknisi
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {kpiData.technicianPerformance.length > 0 ? (
-                  kpiData.technicianPerformance.map((tech) => (
-                    <div
-                      key={tech.name}
-                      className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg"
-                    >
-                      <h3 className="font-bold text-xl text-gray-800 dark:text-white">
-                        {tech.name}
-                      </h3>
-                      <div className="mt-4 grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Pekerjaan Selesai
-                          </p>
-                          <p className="text-2xl font-bold text-primary">{tech.completed}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Total Waktu Kerja
-                          </p>
-                          <p className="text-2xl font-bold text-primary">
-                            {formatDuration(tech.totalMinutes)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="col-span-full text-center py-10 text-gray-500 dark:text-gray-400">
-                    Belum ada data KPI yang bisa ditampilkan.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        );
+
       case 'technicians':
         return (
-          <div key="technicians">
+          <div>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold font-poppins text-gray-800 dark:text-white">
                 Manajemen Tim/User
@@ -2580,7 +1065,7 @@ const AdminPage: React.FC = () => {
                         {user.name.charAt(0)}
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-900 dark:text:white">{user.name}</p>
+                        <p className="font-semibold text-gray-900 dark:text-white">{user.name}</p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
                           @{user.username} • {user.role}
                         </p>
@@ -2592,14 +1077,14 @@ const AdminPage: React.FC = () => {
                         className="p-2 text-blue-600 hover:bg-blue-100 dark:hover:bg-slate-700 rounded-full"
                         title="Edit User"
                       >
-                        <Edit size={18} />
+                        <Settings size={18} />
                       </button>
                       <button
                         onClick={() => setTechnicianToDelete(user)}
                         className="p-2 text-red-600 hover:bg-red-100 dark:hover:bg-slate-700 rounded-full"
                         title="Hapus User"
                       >
-                        <Trash2 size={18} />
+                        <Settings size={18} />
                       </button>
                     </div>
                   </div>
@@ -2611,9 +1096,10 @@ const AdminPage: React.FC = () => {
             </div>
           </div>
         );
+
       case 'services':
         return (
-          <div key="services">
+          <div>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold font-poppins text-gray-800 dark:text-white">
                 Manajemen Layanan
@@ -2657,7 +1143,7 @@ const AdminPage: React.FC = () => {
                             className="p-2 text-blue-600 hover:bg-blue-100 dark:hover:bg-slate-700 rounded-full"
                             title="Edit Layanan"
                           >
-                            <Edit size={18} />
+                            <Settings size={18} />
                           </button>
                           <button
                             onClick={() =>
@@ -2669,7 +1155,7 @@ const AdminPage: React.FC = () => {
                             className="p-2 text-red-600 hover:bg-red-100 dark:hover:bg-slate-700 rounded-full"
                             title="Hapus Layanan"
                           >
-                            <Trash2 size={18} />
+                            <Settings size={18} />
                           </button>
                         </div>
                       </div>
@@ -2680,9 +1166,10 @@ const AdminPage: React.FC = () => {
             </div>
           </div>
         );
+
       case 'availability':
         return (
-          <div key="availability">
+          <div>
             <div className="sticky top-4 lg:top-20 z-10 flex justify-end items-center mb-4 p-3 bg-light-bg/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-lg">
               {showSaveSuccess && (
                 <span className="text-green-600 font-semibold mr-4">
@@ -2818,6 +1305,56 @@ const AdminPage: React.FC = () => {
             </div>
           </div>
         );
+
+      case 'kpi':
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <BarChart data={kpiData.popularServices} title="5 Layanan Terlaris (Selesai)" />
+              <PieChart data={kpiData.statusDistribution} title="Distribusi Status Pesanan" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold font-poppins text-gray-800 dark:text-white mb-4">
+                Performa Teknisi
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {kpiData.technicianPerformance.length > 0 ? (
+                  kpiData.technicianPerformance.map((tech) => (
+                    <div
+                      key={tech.name}
+                      className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg"
+                    >
+                      <h3 className="font-bold text-xl text-gray-800 dark:text-white">
+                        {tech.name}
+                      </h3>
+                      <div className="mt-4 grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            Pekerjaan Selesai
+                          </p>
+                          <p className="text-2xl font-bold text-primary">{tech.completed}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            Total Waktu Kerja
+                          </p>
+                          <p className="text-2xl font-bold text-primary">
+                            {formatDuration(tech.totalMinutes)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="col-span-full text-center py-10 text-gray-500 dark:text-gray-400">
+                    Belum ada data KPI yang bisa ditampilkan.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -2903,7 +1440,7 @@ const AdminPage: React.FC = () => {
                 Hello, {currentUser?.name}
               </span>
               <div className="w-10 h-10 rounded-full bg-primary-light dark:bg-slate-700 flex items-center justify-center text-primary font-bold text-lg">
-                {currentUser?.name.charAt(0)}
+                {currentUser?.name?.charAt(0)}
               </div>
             </div>
           </header>
@@ -2929,6 +1466,7 @@ const AdminPage: React.FC = () => {
         </div>
       </div>
 
+      {/* overlay sidebar mobile */}
       {isSidebarOpen && (
         <div
           onClick={() => setIsSidebarOpen(false)}
@@ -2936,6 +1474,7 @@ const AdminPage: React.FC = () => {
         ></div>
       )}
 
+      {/* Modals */}
       <BookingFormModal
         isOpen={isAddBookingModalOpen}
         onClose={() => setIsAddBookingModalOpen(false)}
@@ -2954,7 +1493,7 @@ const AdminPage: React.FC = () => {
         onSave={handleSaveService}
         serviceToEdit={serviceToEdit}
         categoryToEdit={categoryToEdit}
-        allCategories={services.map((c) => c.category)}
+        allCategories={allCategoryNames}
       />
 
       <TechnicianFormModal
