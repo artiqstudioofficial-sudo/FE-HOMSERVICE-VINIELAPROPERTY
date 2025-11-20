@@ -1,6 +1,6 @@
 // components/admin/bookings/WhatsAppButton.tsx
 import React from 'react';
-import { AdminBooking } from '../../../lib/api';
+import { AdminBooking } from '../../../lib/api/admin';
 
 type Props = {
   booking: AdminBooking;

@@ -1,5 +1,5 @@
 // components/admin/bookings/AdminBookingsSection.tsx
-import { AdminBooking } from '@/lib/api';
+import { AdminBooking } from '@/lib/api/admin';
 import { BookingStatus } from '@/lib/storage';
 import React from 'react';
 import WhatsAppButton from './Whatsappbutton';

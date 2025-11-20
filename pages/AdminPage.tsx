@@ -1,32 +1,18 @@
 // pages/AdminPage.tsx
-import {
-  BarChart2,
-  Calendar as CalendarIcon,
-  ExternalLink,
-  LayoutDashboard,
-  LogOut,
-  Map as MapIcon,
-  MapPin,
-  PlusCircle,
-  Settings,
-  UserPlus,
-  Users,
-} from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 import BookingFormModal from '../components/BookingFormModal';
-import Calendar from '../components/Calendar';
 import GenericConfirmationModal from '../components/GenericConfirmationModal';
 import ServiceFormModal from '../components/ServiceFormModal';
 
-import { Service, ServiceCategory, serviceIcons } from '../config/services';
+import { Service, ServiceCategory } from '../config/services';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import {
   AdminBooking,
   ApiTechScheduleByUser,
   ServiceMasterCategory,
+  createServiceOnServer,
   fetchBookingsFromApi,
   fetchRolesFromApi,
   fetchServiceCategoriesFromApi,
@@ -35,7 +21,8 @@ import {
   fetchUsersFromApi,
   mapApiStatusToBookingStatus,
   updateBookingStatusOnServer,
-} from '../lib/api';
+  updateServiceOnServer,
+} from '../lib/api/admin';
 import { simulateNotification } from '../lib/notifications';
 import {
   BookingStatus,
@@ -44,7 +31,6 @@ import {
   getAvailability,
   getBookings,
   getServices,
-  parseKeyToDate,
   saveAvailability,
   saveBookings,
   saveServices,
@@ -52,12 +38,17 @@ import {
 
 // komponen pecahan
 import AdminBookingsSection from '@/components/admin/booking/AdminBookingSection';
-import BarChart from '../components/admin/charts/BarChart';
-import PieChart from '../components/admin/charts/PieChart';
-import TechnicianFormModal from '../components/admin/modals/TechnicianFormModal';
-import TechnicianSchedule from '../components/admin/schedule/TechnicianSchedule';
+import AdminHeader from '@/components/admin/layout/AdminHeader';
+import AdminSidebar from '@/components/admin/layout/AdminSidebar';
+import TechnicianFormModal from '@/components/admin/modals/TechnicianFormModal';
+import AvailabilitySection from '@/components/admin/sections/AvailabilitySection';
+import KpiSection from '@/components/admin/sections/KpiSection';
+import MapSection from '@/components/admin/sections/MapSection';
+import ScheduleSection from '@/components/admin/sections/ScheduleSection';
+import ServicesSection from '@/components/admin/sections/ServicesSection';
+import TechniciansSection from '@/components/admin/sections/TechniciansSection';
 
-type AdminSection =
+export type AdminSection =
   | 'kpi'
   | 'bookings'
   | 'schedule'
@@ -68,21 +59,13 @@ type AdminSection =
 
 const statuses: BookingStatus[] = ['Confirmed', 'On Site', 'In Progress', 'Completed', 'Cancelled'];
 
-const formatDuration = (minutes: number): string => {
-  if (!minutes) return '-';
-  if (minutes < 60) return `${minutes} mnt`;
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  if (remainingMinutes === 0) return `${hours} jam`;
-  return `${hours} jam ${remainingMinutes} mnt`;
-};
-
 const AdminPage: React.FC = () => {
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [services, setServices] = useState<ServiceCategory[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [roles, setRoles] = useState<{ id: number; name: string }[]>([]);
   const [serviceCategories, setServiceCategories] = useState<ServiceMasterCategory[]>([]);
+
   const [activeSection, setActiveSection] = useState<AdminSection>('kpi');
   const [expandedBookingId, setExpandedBookingId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -93,23 +76,25 @@ const AdminPage: React.FC = () => {
 
   const { addNotification } = useNotification();
   const { logout, currentUser } = useAuth();
-  const navigate = useNavigate();
   const ITEMS_PER_PAGE = 5;
 
+  // availability
   const [originalFullyBooked, setOriginalFullyBooked] = useState<Set<string>>(new Set<string>());
   const [originalBookedSlots, setOriginalBookedSlots] = useState<Set<string>>(new Set<string>());
   const [draftFullyBooked, setDraftFullyBooked] = useState<Set<string>>(new Set<string>());
   const [draftBookedSlots, setDraftBookedSlots] = useState<Set<string>>(new Set<string>());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [scheduleDate, setScheduleDate] = useState<Date>(new Date());
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+
+  // map
   const [selectedLocation, setSelectedLocation] = useState<{
     lat: number;
     lng: number;
     title: string;
   } | null>(null);
 
+  // services
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [serviceToEdit, setServiceToEdit] = useState<Service | null>(null);
   const [categoryToEdit, setCategoryToEdit] = useState<string | null>(null);
@@ -118,11 +103,15 @@ const AdminPage: React.FC = () => {
     categoryName: string;
   } | null>(null);
 
+  // technicians
   const [isTechnicianModalOpen, setIsTechnicianModalOpen] = useState(false);
   const [technicianToEdit, setTechnicianToEdit] = useState<any | null>(null);
   const [technicianToDelete, setTechnicianToDelete] = useState<any | null>(null);
+
+  // add booking
   const [isAddBookingModalOpen, setIsAddBookingModalOpen] = useState(false);
 
+  // confirmation modal
   const [confirmationState, setConfirmationState] = useState<{
     isOpen: boolean;
     bookingId: number | null;
@@ -139,6 +128,8 @@ const AdminPage: React.FC = () => {
     message: '',
   });
 
+  // tech schedule
+  const [scheduleDate, setScheduleDate] = useState<Date>(new Date());
   const [techSchedules, setTechSchedules] = useState<ApiTechScheduleByUser[]>([]);
   const [isLoadingTechSchedule, setIsLoadingTechSchedule] = useState(false);
   const [techScheduleError, setTechScheduleError] = useState<string | null>(null);
@@ -158,6 +149,8 @@ const AdminPage: React.FC = () => {
     });
     return map;
   }, [services]);
+
+  /* ------------------------------ LOAD DATA ------------------------------ */
 
   const loadData = useCallback(async () => {
     try {
@@ -253,7 +246,7 @@ const AdminPage: React.FC = () => {
     });
   }, [bookings]);
 
-  // detect ada perubahan availability
+  // detect perubahan availability
   useEffect(() => {
     const fullyBookedChanged =
       JSON.stringify(Array.from(originalFullyBooked).sort()) !==
@@ -271,18 +264,21 @@ const AdminPage: React.FC = () => {
     }
   }, [activeSection, scheduleDate, loadTechSchedule]);
 
-  // filter bookings
-  const filteredBookings = useMemo(() => {
-    return bookings
-      .filter((booking) => {
-        const searchTermMatch = booking.name.toLowerCase().includes(searchTerm.toLowerCase());
-        const statusMatch = statusFilter === 'all' || booking.status === statusFilter;
-        const technicianMatch =
-          technicianFilter === 'all' || booking.technician === technicianFilter;
-        return searchTermMatch && statusMatch && technicianMatch;
-      })
-      .sort((a, b) => b.id - a.id);
-  }, [bookings, searchTerm, statusFilter, technicianFilter]);
+  /* ---------------------------- FILTER & PAGING --------------------------- */
+
+  const filteredBookings = useMemo(
+    () =>
+      bookings
+        .filter((booking) => {
+          const searchTermMatch = booking.name.toLowerCase().includes(searchTerm.toLowerCase());
+          const statusMatch = statusFilter === 'all' || booking.status === statusFilter;
+          const technicianMatch =
+            technicianFilter === 'all' || booking.technician === technicianFilter;
+          return searchTermMatch && statusMatch && technicianMatch;
+        })
+        .sort((a, b) => b.id - a.id),
+    [bookings, searchTerm, statusFilter, technicianFilter],
+  );
 
   const paginatedBookings = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE_BOOKING;
@@ -319,7 +315,8 @@ const AdminPage: React.FC = () => {
     }
   }, [activeSection, upcomingJobs, selectedLocation]);
 
-  // ==== HANDLER BOOKING / STATUS ====
+  /* -------------------- HANDLER BOOKING / STATUS / TECH ------------------- */
+
   const handleBookingUpdate = (id: number, field: 'technician', value: string) => {
     if (field === 'technician') {
       const originalBooking = bookings.find((b) => b.id === id);
@@ -459,7 +456,8 @@ const AdminPage: React.FC = () => {
     closeConfirmationModal();
   };
 
-  // ==== HANDLER AVAILABILITY ====
+  /* --------------------------- HANDLER AVAILABILITY --------------------------- */
+
   const handleToggleFullDay = () => {
     if (!selectedDate) return;
     const dateKey = formatDateToKey(selectedDate);
@@ -501,7 +499,8 @@ const AdminPage: React.FC = () => {
     setDraftFullyBooked(newDraft);
   };
 
-  // ==== HANDLER SERVICE ====
+  /* ----------------------------- HANDLER SERVICE ----------------------------- */
+
   const handleOpenAddService = () => {
     setServiceToEdit(null);
     setCategoryToEdit(null);
@@ -515,6 +514,8 @@ const AdminPage: React.FC = () => {
   };
 
   const handleSaveService = (serviceData: Service, categoryName: string) => {
+    const isEdit = !!serviceToEdit;
+
     const applyLocalUpdate = () => {
       let newServices = JSON.parse(JSON.stringify(services)) as ServiceCategory[];
 
@@ -549,58 +550,29 @@ const AdminPage: React.FC = () => {
       saveServices(newServices);
     };
 
-    // EDIT: lokal
-    if (serviceToEdit) {
-      applyLocalUpdate();
-      setIsServiceModalOpen(false);
-      addNotification(`Layanan "${serviceData.name}" berhasil diperbarui.`, 'success');
-      return;
-    }
-
-    // CREATE: panggil API + kirim service_category_id
     (async () => {
       try {
-        const anyService = serviceData as any;
+        if (isEdit) {
+          const idFromService = (serviceToEdit as any)?.id;
+          if (!idFromService) {
+            addNotification(
+              'ID layanan tidak ditemukan. Pastikan API /admin/service-list mengirim field id dan disimpan di Service.',
+              'error',
+            );
+            return;
+          }
 
-        const durationMinutes =
-          anyService.duration_minute ??
-          (typeof serviceData.duration === 'number' ? serviceData.duration : 0);
-
-        const durationHours =
-          anyService.duration_hour ??
-          (typeof serviceData.duration === 'number' ? Math.floor(serviceData.duration / 60) : 0);
-
-        const masterCategory = serviceCategories.find((c) => c.name === categoryName);
-
-        const payload = {
-          name: serviceData.name,
-          price: String(serviceData.price ?? 0),
-          unit_price: serviceData.priceUnit ?? 'unit',
-          point: anyService.point ?? 0,
-          icon: serviceData.icon,
-          service_category_id: masterCategory ? masterCategory.id : null,
-          duration_minute: durationMinutes,
-          duration_hour: durationHours,
-          is_guarantee: anyService.is_guarantee ?? false,
-        };
-
-        const res = await fetch('http://localhost:4222/api/v1/admin/service-store', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify(payload),
-        });
-
-        if (!res.ok) {
-          const text = await res.text().catch(() => '');
-          throw new Error(text || `Gagal menyimpan layanan: ${res.status}`);
+          await updateServiceOnServer(idFromService, serviceData, categoryName);
+        } else {
+          await createServiceOnServer(serviceData, categoryName, serviceCategories);
         }
 
         applyLocalUpdate();
         setIsServiceModalOpen(false);
-        addNotification(`Layanan "${serviceData.name}" berhasil disimpan ke server.`, 'success');
+        addNotification(
+          `Layanan "${serviceData.name}" berhasil ${isEdit ? 'diperbarui' : 'disimpan ke server'}.`,
+          'success',
+        );
       } catch (error) {
         console.error('Error saat menyimpan layanan ke server:', error);
         addNotification(
@@ -631,7 +603,8 @@ const AdminPage: React.FC = () => {
     addNotification(`Layanan "${serviceName}" telah dihapus.`, 'success');
   };
 
-  // ==== HANDLER TECHNICIAN ====
+  /* --------------------------- HANDLER TECHNICIAN --------------------------- */
+
   const handleOpenAddTechnician = () => {
     setTechnicianToEdit(null);
     setIsTechnicianModalOpen(true);
@@ -718,7 +691,8 @@ const AdminPage: React.FC = () => {
     addNotification(`User "${technicianToDelete.name}" telah dihapus.`, 'success');
   };
 
-  // ==== HANDLER BOOKING BARU ====
+  /* --------------------------- HANDLER NEW BOOKING -------------------------- */
+
   const handleSaveNewBooking = (
     newBookingData: Omit<AdminBooking, 'id' | 'formId' | 'applyId'>,
   ) => {
@@ -766,7 +740,8 @@ const AdminPage: React.FC = () => {
     setIsAddBookingModalOpen(false);
   };
 
-  // ==== KPI DATA ====
+  /* --------------------------------- KPI DATA -------------------------------- */
+
   const kpiData = useMemo(() => {
     const techKpis: {
       [key: string]: { completed: number; totalMinutes: number };
@@ -815,7 +790,7 @@ const AdminPage: React.FC = () => {
     return { technicianPerformance, popularServices, statusDistribution };
   }, [bookings, technicians]);
 
-  // Jadwal teknisi dari API
+  // Jadwal teknisi dari API → AdminBooking[]
   const scheduleBookings: AdminBooking[] = useMemo(() => {
     const result: AdminBooking[] = [];
 
@@ -887,6 +862,8 @@ const AdminPage: React.FC = () => {
     availability: 'Atur Ketersediaan Jadwal',
   };
 
+  /* ---------------------------- RENDER SECTION ---------------------------- */
+
   const renderSection = () => {
     switch (activeSection) {
       case 'bookings':
@@ -915,537 +892,92 @@ const AdminPage: React.FC = () => {
 
       case 'schedule':
         return (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-1 bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-6">
-                <h2 className="text-xl font-bold font-poppins text-gray-800 dark:text-white mb-1">
-                  Pilih Tanggal
-                </h2>
-                <p className="text-sm text-secondary dark:text-slate-300 mb-4">
-                  Pilih tanggal untuk melihat jadwal teknisi dari sistem backend.
-                </p>
-                <Calendar
-                  selectedDate={scheduleDate}
-                  onDateSelect={setScheduleDate}
-                  fullyBookedDates={new Set<string>()}
-                />
-              </div>
-              <div className="lg:col-span-2 space-y-3">
-                {isLoadingTechSchedule && (
-                  <div className="bg-white dark:bg-slate-800 shadow rounded-xl p-3 text-sm text-gray-500 dark:text-gray-300">
-                    Memuat jadwal teknisi untuk{' '}
-                    {scheduleDate.toLocaleDateString('id-ID', {
-                      weekday: 'long',
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric',
-                    })}
-                    ...
-                  </div>
-                )}
-
-                {techScheduleError && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3">
-                    {techScheduleError}
-                  </div>
-                )}
-
-                <TechnicianSchedule
-                  bookings={scheduleBookings}
-                  selectedDate={scheduleDate}
-                  technicians={scheduleTechnicians}
-                />
-              </div>
-            </div>
-          </div>
+          <ScheduleSection
+            scheduleDate={scheduleDate}
+            onScheduleDateChange={setScheduleDate}
+            isLoading={isLoadingTechSchedule}
+            error={techScheduleError}
+            bookings={scheduleBookings}
+            technicians={scheduleTechnicians}
+          />
         );
 
       case 'map':
         return (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
-            <div className="lg:col-span-1 bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-4 space-y-3 h-full overflow-y-auto">
-              <h2 className="text-xl font-bold font-poppins text-gray-800 dark:text-white p-2 sticky top-0 bg-white dark:bg-slate-800 z-10">
-                Pekerjaan Akan Datang
-              </h2>
-              {upcomingJobs.length > 0 ? (
-                upcomingJobs.map((job) => (
-                  <button
-                    key={job.id}
-                    onClick={() =>
-                      setSelectedLocation({
-                        lat: job.lat,
-                        lng: job.lng,
-                        title: job.name,
-                      })
-                    }
-                    className={`w-full text-left p-4 rounded-lg transition-all duration-200 border-l-4 ${
-                      selectedLocation?.title === job.name
-                        ? 'bg-primary-light dark:bg-slate-700 border-primary'
-                        : 'bg-transparent hover:bg-gray-50 dark:hover:bg-slate-700/50 border-transparent'
-                    }`}
-                  >
-                    <p className="font-bold text-gray-800 dark:text-white">{job.name}</p>
-                    <p className="text-sm text-secondary dark:text-slate-300">{job.service}</p>
-                    <p className="text-xs text-gray-400 mt-1 truncate">{job.address}</p>
-                    <div className="text-sm font-semibold text-primary mt-2">
-                      {new Date(job.startDate).toLocaleDateString('id-ID', {
-                        day: 'numeric',
-                        month: 'long',
-                      })}{' '}
-                      - {job.time}
-                    </div>
-                  </button>
-                ))
-              ) : (
-                <p className="text-center py-10 text-gray-500 dark:text-gray-400">
-                  Tidak ada pekerjaan akan datang.
-                </p>
-              )}
-            </div>
-            <div className="lg:col-span-2 bg-white dark:bg-slate-800 shadow-xl rounded-2xl overflow-hidden h-full flex flex-col">
-              {selectedLocation ? (
-                <>
-                  <div className="p-4 border-b dark:border-slate-700 flex-shrink-0">
-                    <h3 className="font-bold text-lg text-gray-800 dark:text-white">
-                      Lokasi: {selectedLocation.title}
-                    </h3>
-                    <a
-                      href={`https://www.google.com/maps?q=${selectedLocation.lat},${selectedLocation.lng}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary hover:underline inline-flex items-center gap-1"
-                    >
-                      Buka di Google Maps <ExternalLink size={14} />
-                    </a>
-                  </div>
-                  <iframe
-                    key={`${selectedLocation.lat}-${selectedLocation.lng}`}
-                    title="Job Location Map"
-                    className="w-full h-full border-0"
-                    src={`https://maps.google.com/maps?q=${selectedLocation.lat},${selectedLocation.lng}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
-                    allowFullScreen={false}
-                    loading="lazy"
-                  ></iframe>
-                </>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-center text-gray-500 dark:text-gray-400 p-6">
-                  <MapPin className="mb-4 text-gray-300 dark:text-gray-600" size={48} />
-                  <h3 className="font-bold text-xl">Peta Lokasi Pekerjaan</h3>
-                  <p>Pilih pekerjaan dari daftar untuk melihat lokasinya di peta.</p>
-                </div>
-              )}
-            </div>
-          </div>
+          <MapSection
+            upcomingJobs={upcomingJobs}
+            selectedLocation={selectedLocation}
+            onSelectLocation={setSelectedLocation}
+          />
         );
 
       case 'technicians':
         return (
-          <div>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold font-poppins text-gray-800 dark:text-white">
-                Manajemen Tim/User
-              </h2>
-              <button
-                onClick={handleOpenAddTechnician}
-                className="inline-flex items-center gap-2 bg-primary text-white font-bold px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors"
-              >
-                <UserPlus size={20} />
-                Tambah User Baru
-              </button>
-            </div>
-            <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl">
-              <div className="divide-y divide-gray-200 dark:divide-slate-700">
-                {allUsers.map((user) => (
-                  <div
-                    key={user.id}
-                    className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-slate-700/50"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-primary-light dark:bg-slate-700 flex items-center justify-center text-primary font-bold text-lg">
-                        {user.name.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-gray-900 dark:text-white">{user.name}</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          @{user.username} • {user.role}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleOpenEditTechnician(user)}
-                        className="p-2 text-blue-600 hover:bg-blue-100 dark:hover:bg-slate-700 rounded-full"
-                        title="Edit User"
-                      >
-                        <Settings size={18} />
-                      </button>
-                      <button
-                        onClick={() => setTechnicianToDelete(user)}
-                        className="p-2 text-red-600 hover:bg-red-100 dark:hover:bg-slate-700 rounded-full"
-                        title="Hapus User"
-                      >
-                        <Settings size={18} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {allUsers.length === 0 && (
-                <p className="text-center py-10 text-gray-500">Belum ada data user.</p>
-              )}
-            </div>
-          </div>
+          <TechniciansSection
+            users={allUsers}
+            onAddTechnician={handleOpenAddTechnician}
+            onEditTechnician={handleOpenEditTechnician}
+            onRequestDelete={setTechnicianToDelete}
+          />
         );
 
       case 'services':
         return (
-          <div>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold font-poppins text-gray-800 dark:text-white">
-                Manajemen Layanan
-              </h2>
-              <button
-                onClick={handleOpenAddService}
-                className="inline-flex items-center gap-2 bg-primary text-white font-bold px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors"
-              >
-                <PlusCircle size={20} />
-                Tambah Layanan
-              </button>
-            </div>
-            <div className="space-y-8">
-              {services.map((category) => (
-                <div
-                  key={category.category}
-                  className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-6"
-                >
-                  <h3 className="text-xl font-bold font-poppins text-gray-800 dark:text-white mb-4">
-                    {category.category}
-                  </h3>
-                  <div className="divide-y divide-gray-200 dark:divide-slate-700">
-                    {category.services.map((service) => (
-                      <div key={service.name} className="flex items-center justify-between py-3">
-                        <div className="flex items-center gap-4">
-                          <div className="text-primary hidden sm:block">
-                            {serviceIcons[service.icon] || serviceIcons['Wrench']}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-gray-900 dark:text-white">
-                              {service.name}
-                            </p>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                              Rp{service.price.toLocaleString('id-ID')} / {service.priceUnit}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleOpenEditService(service, category.category)}
-                            className="p-2 text-blue-600 hover:bg-blue-100 dark:hover:bg-slate-700 rounded-full"
-                            title="Edit Layanan"
-                          >
-                            <Settings size={18} />
-                          </button>
-                          <button
-                            onClick={() =>
-                              setServiceToDelete({
-                                serviceName: service.name,
-                                categoryName: category.category,
-                              })
-                            }
-                            className="p-2 text-red-600 hover:bg-red-100 dark:hover:bg-slate-700 rounded-full"
-                            title="Hapus Layanan"
-                          >
-                            <Settings size={18} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ServicesSection
+            services={services}
+            onAddService={handleOpenAddService}
+            onEditService={handleOpenEditService}
+            onRequestDelete={setServiceToDelete}
+          />
         );
 
       case 'availability':
         return (
-          <div>
-            <div className="sticky top-4 lg:top-20 z-10 flex justify-end items-center mb-4 p-3 bg-light-bg/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-lg">
-              {showSaveSuccess && (
-                <span className="text-green-600 font-semibold mr-4">
-                  Perubahan berhasil disimpan!
-                </span>
-              )}
-              <button
-                onClick={handleSaveChanges}
-                disabled={!hasUnsavedChanges}
-                className="bg-primary text-white font-bold px-6 py-2 rounded-lg hover:bg-primary-dark transition-all duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                Simpan Perubahan
-              </button>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8 items-start">
-              <div className="col-span-1 bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-6">
-                <h2 className="text-xl font-bold font-poppins text-gray-800 dark:text-white mb-1">
-                  Pilih Tanggal
-                </h2>
-                <p className="text-sm text-secondary dark:text-slate-300 mb-4">
-                  Pilih tanggal untuk mengatur slot waktu atau memblokir sepanjang hari.
-                </p>
-                <Calendar
-                  selectedDate={selectedDate}
-                  onDateSelect={(date) => setSelectedDate(date)}
-                  fullyBookedDates={draftFullyBooked}
-                />
-              </div>
-              <div className="col-span-1 lg:col-span-1 xl:col-span-2 bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-6">
-                <h2 className="text-xl font-bold font-poppins text-gray-800 dark:text-white mb-1">
-                  Atur Slot Waktu
-                </h2>
-                {!selectedDate ? (
-                  <div className="text-center py-20 text-gray-500 dark:text-gray-400">
-                    Pilih tanggal dari kalender untuk memulai.
-                  </div>
-                ) : (
-                  <div>
-                    <div className="flex justify-between items-center mb-4">
-                      <p className="font-semibold text-lg text-secondary dark:text-slate-300">
-                        {selectedDate.toLocaleDateString('id-ID', {
-                          weekday: 'long',
-                          day: 'numeric',
-                          month: 'long',
-                        })}
-                      </p>
-                      <button
-                        onClick={handleToggleFullDay}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-full ${
-                          draftFullyBooked.has(formatDateToKey(selectedDate))
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-gray-200'
-                        }`}
-                      >
-                        {draftFullyBooked.has(formatDateToKey(selectedDate))
-                          ? 'Buka Blokir Hari Ini'
-                          : 'Blokir Seharian'}
-                      </button>
-                    </div>
-                    <div
-                      className={`grid grid-cols-3 sm:grid-cols-4 gap-3 ${
-                        draftFullyBooked.has(formatDateToKey(selectedDate))
-                          ? 'opacity-40 pointer-events-none'
-                          : ''
-                      }`}
-                    >
-                      {availableTimes.map((time) => {
-                        const slotKey = `${formatDateToKey(selectedDate)}-${time}`;
-                        const isBooked = draftBookedSlots.has(slotKey);
-                        return (
-                          <button
-                            key={time}
-                            onClick={() => handleToggleSlot(time)}
-                            className={`text-center font-semibold px-4 py-2.5 rounded-lg border-2 transition-colors duration-200 ${
-                              isBooked
-                                ? 'bg-red-500 border-red-500 text-white'
-                                : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-gray-600 hover:border-primary'
-                            }`}
-                          >
-                            {time}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {draftFullyBooked.has(formatDateToKey(selectedDate)) && (
-                      <p className="text-center mt-4 text-sm text-red-500 font-medium">
-                        Semua slot tidak tersedia karena hari ini diblokir.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="col-span-1 lg:col-span-2 xl:col-span-3 bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-6">
-                <h2 className="text-xl font-bold font-poppins text-gray-800 dark:text-white mb-1">
-                  Daftar Tanggal yang Diblokir Penuh
-                </h2>
-                <p className="text-sm text-secondary dark:text-slate-300 mb-4">
-                  Berikut adalah daftar tanggal yang telah Anda tandai sebagai penuh (tidak termasuk
-                  slot individual).
-                </p>
-                {Array.from(draftFullyBooked).length > 0 ? (
-                  <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">
-                    {Array.from<string>(draftFullyBooked)
-                      .sort((a, b) => parseKeyToDate(a).getTime() - parseKeyToDate(b).getTime())
-                      .map((dateKey) => (
-                        <li
-                          key={dateKey}
-                          className="flex justify-between items-center bg-light-bg dark:bg-slate-700 p-3 rounded-lg"
-                        >
-                          <span className="font-semibold text-gray-700 dark:text-gray-200">
-                            {parseKeyToDate(dateKey).toLocaleDateString('id-ID', {
-                              weekday: 'long',
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric',
-                            })}
-                          </span>
-                          <button
-                            onClick={() => handleRemoveBlockedDate(dateKey)}
-                            className="text-red-500 hover:text-red-700 text-sm font-bold"
-                          >
-                            Hapus
-                          </button>
-                        </li>
-                      ))}
-                  </ul>
-                ) : (
-                  <p className="text-center py-8 text-gray-500 dark:text-gray-400">
-                    Tidak ada tanggal yang diblokir penuh.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
+          <AvailabilitySection
+            availableTimes={availableTimes}
+            selectedDate={selectedDate}
+            onSelectedDateChange={setSelectedDate}
+            draftFullyBooked={draftFullyBooked}
+            draftBookedSlots={draftBookedSlots}
+            onToggleFullDay={handleToggleFullDay}
+            onToggleSlot={handleToggleSlot}
+            onRemoveBlockedDate={handleRemoveBlockedDate}
+            hasUnsavedChanges={hasUnsavedChanges}
+            showSaveSuccess={showSaveSuccess}
+            onSaveChanges={handleSaveChanges}
+          />
         );
 
       case 'kpi':
-        return (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <BarChart data={kpiData.popularServices} title="5 Layanan Terlaris (Selesai)" />
-              <PieChart data={kpiData.statusDistribution} title="Distribusi Status Pesanan" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold font-poppins text-gray-800 dark:text-white mb-4">
-                Performa Teknisi
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {kpiData.technicianPerformance.length > 0 ? (
-                  kpiData.technicianPerformance.map((tech) => (
-                    <div
-                      key={tech.name}
-                      className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg"
-                    >
-                      <h3 className="font-bold text-xl text-gray-800 dark:text-white">
-                        {tech.name}
-                      </h3>
-                      <div className="mt-4 grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Pekerjaan Selesai
-                          </p>
-                          <p className="text-2xl font-bold text-primary">{tech.completed}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Total Waktu Kerja
-                          </p>
-                          <p className="text-2xl font-bold text-primary">
-                            {formatDuration(tech.totalMinutes)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="col-span-full text-center py-10 text-gray-500 dark:text-gray-400">
-                    Belum ada data KPI yang bisa ditampilkan.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        );
+        return <KpiSection kpiData={kpiData} />;
 
       default:
         return null;
     }
   };
 
+  /* --------------------------------- JSX --------------------------------- */
+
   return (
     <div className="bg-light-bg dark:bg-slate-900 min-h-screen">
       <div className="flex">
-        {/* Sidebar */}
-        <aside
-          className={`fixed lg:relative lg:translate-x-0 inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-800 shadow-lg transition-transform duration-300 ease-in-out ${
-            isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
-        >
-          <div className="flex items-center justify-center p-6 border-b dark:border-slate-700 h-20">
-            <span className="text-2xl font-bold text-gray-800 dark:text-gray-100 font-poppins">
-              Admin Viniela
-            </span>
-          </div>
-          <nav className="flex-grow p-4 space-y-2">
-            {[
-              { name: 'Dashboard KPI', icon: BarChart2, section: 'kpi' },
-              { name: 'Daftar Booking', icon: LayoutDashboard, section: 'bookings' },
-              { name: 'Jadwal Teknisi', icon: CalendarIcon, section: 'schedule' },
-              { name: 'Peta Lokasi', icon: MapIcon, section: 'map' },
-              { name: 'Manajemen Tim/User', icon: Users, section: 'technicians' },
-              { name: 'Manajemen Layanan', icon: Settings, section: 'services' },
-              { name: 'Atur Ketersediaan', icon: Settings, section: 'availability' },
-            ].map((item) => (
-              <button
-                key={item.section}
-                onClick={() => {
-                  setActiveSection(item.section as AdminSection);
-                  setIsSidebarOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-colors ${
-                  activeSection === item.section
-                    ? 'bg-primary-light text-primary dark:bg-slate-700'
-                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700/50'
-                }`}
-              >
-                <item.icon size={20} />
-                {item.name}
-              </button>
-            ))}
-          </nav>
-          <div className="p-4 border-t dark:border-slate-700">
-            <button
-              onClick={logout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/50"
-            >
-              <LogOut size={20} />
-              Logout
-            </button>
-          </div>
-        </aside>
+        <AdminSidebar
+          activeSection={activeSection}
+          onSectionChange={(section) => {
+            setActiveSection(section);
+            setIsSidebarOpen(false);
+          }}
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+          onLogout={logout}
+        />
 
-        {/* Main Content */}
         <div className="flex-1 w-full lg:w-auto">
-          {/* Header */}
-          <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm shadow-sm h-20 flex items-center justify-between lg:justify-end px-6">
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className="lg:hidden p-2 text-gray-600 dark:text-gray-300"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M4 6h16M4 12h16M4 18h16"
-                />
-              </svg>
-            </button>
-            <div className="flex items-center gap-4">
-              <span className="font-semibold text-gray-700 dark:text-gray-200">
-                Hello, {currentUser?.name}
-              </span>
-              <div className="w-10 h-10 rounded-full bg-primary-light dark:bg-slate-700 flex items-center justify-center text-primary font-bold text-lg">
-                {currentUser?.name?.charAt(0)}
-              </div>
-            </div>
-          </header>
+          <AdminHeader
+            currentUserName={currentUser?.name}
+            onOpenSidebar={() => setIsSidebarOpen(true)}
+          />
 
-          {/* Page Content */}
           <main className="p-6">
             <div className="flex justify-between items-center mb-6">
               <h1 className="text-3xl font-bold font-poppins text-gray-800 dark:text-white">
@@ -1456,7 +988,6 @@ const AdminPage: React.FC = () => {
                   onClick={() => setIsAddBookingModalOpen(true)}
                   className="inline-flex items-center gap-2 bg-primary text-white font-bold px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors"
                 >
-                  <PlusCircle size={20} />
                   Tambah Booking
                 </button>
               )}

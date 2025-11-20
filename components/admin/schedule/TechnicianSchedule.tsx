@@ -1,7 +1,7 @@
 // components/admin/schedule/TechnicianSchedule.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { Service } from '../../../config/services';
-import { AdminBooking } from '../../../lib/api';
+import { AdminBooking } from '../../../lib/api/admin';
 import { BookingStatus, formatDateToKey, getServices } from '../../../lib/storage';
 
 type Technician = {
