@@ -1,21 +1,27 @@
-import AOS from 'aos';
-import React, { Suspense, lazy, useEffect } from 'react';
-import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import Footer from './components/Footer';
-import Navbar from './components/Navbar';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { NotificationProvider } from './contexts/NotificationContext';
-import { ThemeProvider } from './contexts/ThemeContext';
+import AOS from "aos";
+import React, { Suspense, lazy, useEffect } from "react";
+import {
+  HashRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
+import Footer from "./components/Footer";
+import Navbar from "./components/Navbar";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { NotificationProvider } from "./contexts/NotificationContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
 
-const HomePage = lazy(() => import('./pages/HomePage'));
-const ServicesPage = lazy(() => import('./pages/ServicesPage'));
-const AboutPage = lazy(() => import('./pages/AboutPage'));
-const ContactPage = lazy(() => import('./pages/ContactPage'));
-const AdminPage = lazy(() => import('./pages/AdminPage'));
-const LoginPage = lazy(() => import('./pages/LoginPage'));
-const TechnicianPage = lazy(() => import('./pages/TechnicianPage'));
-const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
-const FaqPage = lazy(() => import('./pages/FaqPage'));
+const HomePage = lazy(() => import("./pages/HomePage"));
+const ServicesPage = lazy(() => import("./pages/ServicesPage"));
+const AboutPage = lazy(() => import("./pages/AboutPage"));
+const ContactPage = lazy(() => import("./pages/ContactPage"));
+const AdminPage = lazy(() => import("./pages/AdminPage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const TechnicianPage = lazy(() => import("./pages/TechnicianPage"));
+const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"));
+const FaqPage = lazy(() => import("./pages/FaqPage"));
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -31,10 +37,10 @@ const PageLoader: React.FC = () => (
   </div>
 );
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string[] }> = ({
-  children,
-  allowedRoles,
-}) => {
+const ProtectedRoute: React.FC<{
+  children: React.ReactNode;
+  allowedRoles: string[];
+}> = ({ children, allowedRoles }) => {
   const { currentUser } = useAuth();
   const location = useLocation();
 
@@ -52,7 +58,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles: string
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const hideLayout =
-    location.pathname.startsWith('/admin') || location.pathname.startsWith('/technician');
+    location.pathname.startsWith("/admin") ||
+    location.pathname.startsWith("/technician");
 
   if (hideLayout) {
     return <>{children}</>;
@@ -72,7 +79,7 @@ const App: React.FC = () => {
     AOS.init({
       duration: 800,
       once: true,
-      easing: 'ease-in-out',
+      easing: "ease-in-out",
       offset: 100,
     });
   }, []);
@@ -92,12 +99,15 @@ const App: React.FC = () => {
                     <Route path="/about" element={<AboutPage />} />
                     <Route path="/contact" element={<ContactPage />} />
                     <Route path="/login" element={<LoginPage />} />
-                    <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+                    <Route
+                      path="/privacy-policy"
+                      element={<PrivacyPolicyPage />}
+                    />
                     <Route path="/faq" element={<FaqPage />} />
                     <Route
                       path="/admin/*"
                       element={
-                        <ProtectedRoute allowedRoles={['admin']}>
+                        <ProtectedRoute allowedRoles={["admin"]}>
                           <AdminPage />
                         </ProtectedRoute>
                       }
@@ -105,7 +115,7 @@ const App: React.FC = () => {
                     <Route
                       path="/technician"
                       element={
-                        <ProtectedRoute allowedRoles={['technician']}>
+                        <ProtectedRoute allowedRoles={["technician"]}>
                           <TechnicianPage />
                         </ProtectedRoute>
                       }

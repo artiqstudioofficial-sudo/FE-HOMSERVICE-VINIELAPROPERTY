@@ -1,25 +1,26 @@
 // ../lib/api/admin.ts
 
-import { Service, ServiceCategory } from '../../config/services';
-import { Booking, BookingStatus } from '../storage';
-import { apiArray, apiRequest, formatDateForApi } from './client';
+import { Service } from "../../config/services";
+import { Booking, BookingStatus } from "../storage";
+import { apiArray, apiRequest, formatDateForApi } from "./client";
 
-export { formatDateForApi } from './client';
+export { formatDateForApi } from "./client";
 
 /* -------------------------------------------------------------------------- */
 /*                               ADMIN ENDPOINTS                              */
 /* -------------------------------------------------------------------------- */
 
-const ADMIN_ENDPOINTS = {
-  users: '/admin/user-management-list',
-  roles: '/admin/user-role-list',
-  serviceCategories: '/admin/service-category-list',
-  bookings: '/admin/user-booking-list',
-  services: '/admin/service-list',
-  updateBookingStatus: '/admin/update-booking-status',
-  techSchedule: '/admin/tech-schedule',
-  serviceCreate: '/admin/service-store',
-  serviceUpdate: '/admin/service-update',
+export const ADMIN_ENDPOINTS = {
+  users: "/admin/user-management-list",
+  roles: "/admin/user-role-list",
+  serviceCategories: "/admin/service-category-list",
+  bookings: "/admin/user-booking-list",
+  services: "/admin/service-list",
+  updateBookingStatus: "/admin/update-booking-status",
+  techSchedule: "/admin/tech-schedule",
+  serviceCreate: "/admin/service-store",
+  serviceUpdate: "/admin/service-update",
+  serviceDelete: "/admin/service-delete",
 } as const;
 
 /* -------------------------------------------------------------------------- */
@@ -28,51 +29,47 @@ const ADMIN_ENDPOINTS = {
 
 export interface User {
   id: number;
-  name: string; // dari "fullname"
+  name: string;
   username: string;
   role: string;
   created_at?: string;
-  password?: string; // hanya untuk UI form
+  password?: string;
 }
 
 export interface UserRole {
   id: number;
-  name: string; // "admin", "technician", dll
+  name: string;
 }
 
-// Master service category dari API /admin/service-category-list
 export interface ServiceMasterCategory {
   id: number;
   name: string;
 }
 
-// Booking yang dipakai di Admin (boleh punya formId/applyId dari backend)
 export type AdminBooking = Booking & {
   formId?: number;
   applyId?: number;
-  technicianUserId?: number | null; // user_id teknisi dari backend
+  technicianUserId?: number | null;
 };
 
-// ----- Types untuk Tech Schedule API -----
 export type ApiTechScheduleItem = {
   apply_id: number;
   form_id: number;
-  fullname: string; // nama customer
+  fullname: string;
   wa: string;
   address: string;
   service: string;
-  schedule_date: string; // "2025-11-16"
-  schedule_time: string; // "12:30"
-  status: string; // "INPROGRESS" | dll
+  schedule_date: string;
+  schedule_time: string;
+  status: string;
 };
 
 export type ApiTechScheduleByUser = {
   user_id: number;
-  fullname: string; // nama teknisi
+  fullname: string;
   schedules: ApiTechScheduleItem[];
 };
 
-// ----- Types untuk Booking List API -----
 export type ApiBookingItem = {
   apply_id: number;
   form_id: number;
@@ -97,19 +94,20 @@ export type ApiBookingItem = {
   after_photo: string | null;
 };
 
-// ----- Types untuk Service List API -----
 export type ApiServiceItem = {
   id: number;
   name: string;
   price: string;
-  unit_price?: Service['priceUnit'] | string; // string dari API -> dinormalisasi
-  category?: string;
-  icon?: keyof typeof import('../../config/services')['serviceIcons'];
-  duration?: number;
-  duration_days?: number;
+  unit_price: string;
+  category: string;
+  service_category: number;
+
+  duration_minute?: number;
+  duration_hour?: number;
+  point?: number;
+  is_guarantee?: boolean;
 };
 
-/** Field ekstra yang kadang disisipkan di Service dari backend */
 type ServiceBackendFields = Partial<{
   duration_minute: number;
   duration_hour: number;
@@ -121,49 +119,42 @@ type ServiceBackendFields = Partial<{
 /*                              FORMAT & MAPPING                              */
 /* -------------------------------------------------------------------------- */
 
-/* ---------------------------- Status Booking ---------------------------- */
-
 const API_STATUS_TO_BOOKING: Record<string, BookingStatus> = {
-  INPROGRESS: 'In Progress',
-  IN_PROGRESS: 'In Progress',
-  DONE: 'Completed',
-  COMPLETED: 'Completed',
-  CANCELLED: 'Cancelled',
-  CANCELED: 'Cancelled',
-  ONSITE: 'On Site',
-  ON_SITE: 'On Site',
+  INPROGRESS: "In Progress",
+  IN_PROGRESS: "In Progress",
+  DONE: "Completed",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
+  CANCELED: "Cancelled",
+  ONSITE: "On Site",
+  ON_SITE: "On Site",
 };
 
 export const mapApiStatusToBookingStatus = (status: string): BookingStatus =>
-  API_STATUS_TO_BOOKING[status.toUpperCase()] ?? 'Confirmed';
+  API_STATUS_TO_BOOKING[status.toUpperCase()] ?? "Confirmed";
 
-// ⚠️ SESUAIKAN ANGKA DI SINI DENGAN TABEL STATUS DI BACKEND-MU
 export const BOOKING_STATUS_TO_API_CODE: Record<BookingStatus, string> = {
-  Confirmed: '1',
-  'On Site': '2',
-  'In Progress': '3',
-  Completed: '4',
-  Cancelled: '5',
+  Confirmed: "1",
+  "On Site": "2",
+  "In Progress": "3",
+  Completed: "4",
+  Cancelled: "5",
 };
 
-/* --------------------------- Normalisasi Unit --------------------------- */
-
-const PRICE_UNIT_ALIASES: Record<string, Service['priceUnit']> = {
-  unit: 'unit',
-  jam: 'jam',
-  hour: 'jam',
-  hours: 'jam',
-  kg: 'kg',
-  m2: 'm²',
-  'm²': 'm²',
+const PRICE_UNIT_ALIASES: Record<string, Service["unit_price"]> = {
+  unit: "unit",
+  jam: "jam",
+  hour: "jam",
+  hours: "jam",
+  kg: "kg",
+  m2: "m²",
+  "m²": "m²",
 };
 
-function normalizePriceUnit(raw?: string | null): Service['priceUnit'] {
-  const key = (raw ?? '').toString().toLowerCase();
-  return PRICE_UNIT_ALIASES[key] ?? 'unit';
+function normalizePriceUnit(raw?: string | null): Service["unit_price"] {
+  const key = (raw ?? "").toString().toLowerCase();
+  return PRICE_UNIT_ALIASES[key] ?? "unit";
 }
-
-/* --------------------------- Duration Helpers --------------------------- */
 
 function computeDuration(service: Service & ServiceBackendFields): {
   durationMinutes: number;
@@ -172,25 +163,27 @@ function computeDuration(service: Service & ServiceBackendFields): {
   const fromBackendMinute = service.duration_minute;
   const fromBackendHour = service.duration_hour;
 
-  if (typeof fromBackendMinute === 'number' || typeof fromBackendHour === 'number') {
+  if (
+    typeof fromBackendMinute === "number" ||
+    typeof fromBackendHour === "number"
+  ) {
+    const minutes = fromBackendMinute ?? (fromBackendHour ?? 0) * 60;
+    const hours = fromBackendHour ?? Math.floor(minutes / 60);
     return {
-      durationMinutes: fromBackendMinute ?? (fromBackendHour ?? 0) * 60,
-      durationHours: fromBackendHour ?? Math.floor((fromBackendMinute ?? 0) / 60),
+      durationMinutes: minutes,
+      durationHours: hours,
     };
   }
 
-  const duration = typeof service.duration === 'number' ? service.duration : 0;
   return {
-    durationMinutes: duration,
-    durationHours: Math.floor(duration / 60),
+    durationMinutes: 0,
+    durationHours: 0,
   };
 }
 
 /* -------------------------------------------------------------------------- */
 /*                               API FUNCTIONS                                */
 /* -------------------------------------------------------------------------- */
-
-/* ---------------------------- User Management ---------------------------- */
 
 export async function fetchUsersFromApi(): Promise<User[]> {
   const data = await apiArray<any>(ADMIN_ENDPOINTS.users);
@@ -202,11 +195,9 @@ export async function fetchUsersFromApi(): Promise<User[]> {
       username: u.username,
       role: u.role,
       created_at: u.created_at,
-    }),
+    })
   );
 }
-
-/* ------------------------------ User Roles ------------------------------ */
 
 export async function fetchRolesFromApi(): Promise<UserRole[]> {
   const data = await apiArray<any>(ADMIN_ENDPOINTS.roles);
@@ -215,24 +206,22 @@ export async function fetchRolesFromApi(): Promise<UserRole[]> {
     (r): UserRole => ({
       id: r.id,
       name: r.name,
-    }),
+    })
   );
 }
 
-/* ---------------------- Master Service Category List -------------------- */
-
-export async function fetchServiceCategoriesFromApi(): Promise<ServiceMasterCategory[]> {
+export async function fetchServiceCategoriesFromApi(): Promise<
+  ServiceMasterCategory[]
+> {
   const data = await apiArray<any>(ADMIN_ENDPOINTS.serviceCategories);
 
   return data.map(
     (c): ServiceMasterCategory => ({
       id: c.id,
       name: c.name,
-    }),
+    })
   );
 }
-
-/* -------------------------- Booking List (Admin) ------------------------ */
 
 export async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
   const data = await apiArray<ApiBookingItem>(ADMIN_ENDPOINTS.bookings);
@@ -242,7 +231,7 @@ export async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
     const status = mapApiStatusToBookingStatus(row.status);
 
     return {
-      id: row.apply_id, // pakai apply_id sebagai id unik di admin
+      id: row.apply_id,
       formId: row.form_id,
       applyId: row.apply_id,
 
@@ -254,7 +243,7 @@ export async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
       endDate: scheduleDate,
       time: row.schedule_time,
 
-      technician: row.technician_name || 'Belum Ditugaskan',
+      technician: row.technician_name || "Belum Ditugaskan",
       technicianUserId: row.technician_id ?? null,
 
       status,
@@ -265,8 +254,10 @@ export async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
       startTime: null,
       endTime: null,
       workDurationMinutes: 0,
-      additionalCosts: row.additional_cost ? Number(row.additional_cost) || 0 : 0,
-      note: row.note || '',
+      additionalCosts: row.additional_cost
+        ? Number(row.additional_cost) || 0
+        : 0,
+      note: row.note || "",
       photos: {
         arrival: row.arrive_photo || undefined,
         before: row.before_photo || undefined,
@@ -276,48 +267,33 @@ export async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
   });
 }
 
-/* --------------------------- Service List (Admin) ----------------------- */
-
-export async function fetchServicesFromApi(): Promise<ServiceCategory[]> {
+export async function fetchServicesFromApi(): Promise<Service[]> {
   const data = await apiArray<ApiServiceItem>(ADMIN_ENDPOINTS.services);
 
-  const categoriesMap = new Map<string, ServiceCategory>();
+  return data.map((item): Service & ServiceBackendFields => {
+    const unit = normalizePriceUnit(item.unit_price);
 
-  data.forEach((item) => {
-    const categoryName = item.category || 'Layanan Umum';
-    let category = categoriesMap.get(categoryName);
-
-    if (!category) {
-      category = { category: categoryName, services: [] };
-      categoriesMap.set(categoryName, category);
-    }
-
-    const service: Service = {
+    return {
+      id: item.id,
       name: item.name,
-      icon: (item.icon as any) || 'Wrench',
-      price: Number(item.price) || 0,
-      priceUnit: normalizePriceUnit(item.unit_price as string),
-      duration: item.duration ?? 60,
-      durationDays: item.duration_days ?? 1,
-      description: '',
-      includes: [],
-      excludes: [],
-    };
-
-    category.services.push(service);
+      price: item.price,
+      unit_price: unit,
+      service_category: item.service_category,
+      category: item.category,
+      duration_minute: item.duration_minute,
+      duration_hour: item.duration_hour,
+      point: item.point,
+      is_guarantee: item.is_guarantee,
+    } as Service & ServiceBackendFields;
   });
-
-  return Array.from(categoriesMap.values());
 }
 
-/* ---------------------------- Update Booking ---------------------------- */
+// ------------------------ Update Booking Status ------------------------ //
 
-// METHOD: PUT
-// BODY: { form_id: "1", status: "5", user_id: <id teknisi> }
 export async function updateBookingStatusOnServer(
   formId: number,
   newStatus: BookingStatus,
-  userId: number,
+  userId: number
 ): Promise<void> {
   const statusCode = BOOKING_STATUS_TO_API_CODE[newStatus];
   if (!statusCode) {
@@ -331,49 +307,58 @@ export async function updateBookingStatusOnServer(
   };
 
   await apiRequest(ADMIN_ENDPOINTS.updateBookingStatus, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }
 
-/* -------------------------- Tech Schedule (Admin) ----------------------- */
+// --------------------------- Tech Schedule ---------------------------- //
 
-export async function fetchTechScheduleFromApi(date: Date): Promise<ApiTechScheduleByUser[]> {
+export async function fetchTechScheduleFromApi(
+  date: Date
+): Promise<ApiTechScheduleByUser[]> {
   const dateStr = formatDateForApi(date);
 
   const data = await apiArray<any>(
-    `${ADMIN_ENDPOINTS.techSchedule}?schedule_date=${encodeURIComponent(dateStr)}`,
+    `${ADMIN_ENDPOINTS.techSchedule}?schedule_date=${encodeURIComponent(
+      dateStr
+    )}`
   );
 
   return data.map(
     (row): ApiTechScheduleByUser => ({
       user_id: row.user_id,
       fullname: row.fullname,
-      schedules: Array.isArray(row.schedules) ? row.schedules : [],
-    }),
+      schedules: Array.isArray(row.schedules)
+        ? (row.schedules as ApiTechScheduleItem[])
+        : Array.isArray(row.schedules_json)
+        ? (row.schedules_json as ApiTechScheduleItem[])
+        : [],
+    })
   );
 }
 
-/* ----------------------- Create & Update Service API -------------------- */
+// --------------------- Create & Update Service API --------------------- //
 
 export async function createServiceOnServer(
   serviceData: Service,
-  categoryName: string,
-  serviceCategories: ServiceMasterCategory[],
+  categoryName: string, // label (untuk fallback)
+  serviceCategories: ServiceMasterCategory[]
 ): Promise<void> {
   const service = serviceData as Service & ServiceBackendFields;
   const { durationMinutes, durationHours } = computeDuration(service);
 
-  // Ambil ID dari master category berdasarkan nama
-  const masterCategory = serviceCategories.find((c) => c.name === categoryName);
+  // ⬇️ Prioritas pakai ID dari service.service_category
+  const masterCategory =
+    serviceCategories.find((c) => c.id === service.service_category) ||
+    serviceCategories.find((c) => c.name === categoryName);
 
   const payload = {
     name: service.name,
     price: String(service.price ?? 0),
-    unit_price: service.priceUnit ?? 'unit',
+    unit_price: normalizePriceUnit(service.unit_price),
     point: service.point ?? 0,
-    icon: service.icon,
     service_category_id: masterCategory ? masterCategory.id : null,
     duration_minute: durationMinutes,
     duration_hour: durationHours,
@@ -381,19 +366,16 @@ export async function createServiceOnServer(
   };
 
   await apiRequest(ADMIN_ENDPOINTS.serviceCreate, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }
 
-// URL: /admin/service-update
-// BACKEND expect:
-//   { id, name, price, unit_price, service_category, duration_minute, duration_hour, is_guarantee }
+// BACKEND expect: { id, name, price, unit_price, service_category (INT), duration_minute, duration_hour, is_guarantee }
 export async function updateServiceOnServer(
   id: number,
-  serviceData: Service,
-  categoryName: string,
+  serviceData: Service
 ): Promise<void> {
   const service = serviceData as Service & ServiceBackendFields;
   const { durationMinutes, durationHours } = computeDuration(service);
@@ -402,18 +384,29 @@ export async function updateServiceOnServer(
     id,
     name: service.name,
     price: String(service.price ?? 0),
-    unit_price: service.priceUnit ?? 'unit',
-    service_category: categoryName, // backend minta NAMA kategori
+    unit_price: normalizePriceUnit(service.unit_price),
+    // ⬇️ SEKARANG INTEGER ID, BUKAN NAMA
+    service_category: service.service_category,
     duration_minute: durationMinutes,
     duration_hour: durationHours,
     is_guarantee: service.is_guarantee ?? false,
-    // point: service.point ?? 0,
-    // icon: service.icon,
   };
 
   await apiRequest(ADMIN_ENDPOINTS.serviceUpdate, {
-    method: 'POST', // ganti ke 'PUT' kalau backend pakai PUT
-    headers: { 'Content-Type': 'application/json' },
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+// ---------------------------- Delete Service --------------------------- //
+
+export async function deleteServiceOnServer(id: number): Promise<void> {
+  const payload = { id: String(id) };
+
+  await apiRequest(ADMIN_ENDPOINTS.serviceDelete, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }
