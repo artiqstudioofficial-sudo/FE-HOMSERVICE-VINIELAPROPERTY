@@ -578,7 +578,6 @@ const AdminPage: React.FC = () => {
   const handleSaveService = (serviceData: Service, categoryValue: string) => {
     const isEdit = !!serviceToEdit;
 
-    // categoryValue sekarang = ID kategori (string)
     const categoryId =
       categoryValue && !Number.isNaN(Number(categoryValue))
         ? Number(categoryValue)
@@ -586,14 +585,14 @@ const AdminPage: React.FC = () => {
 
     const master = serviceCategories.find((c) => c.id === categoryId);
 
-    const updatedService: Service = {
+    // base service yang sudah rapi (pakai ID kategori & label)
+    const updatedServiceBase: Service = {
       ...serviceData,
       service_category: categoryId,
-      // label kategori dipakai untuk UI
       category: master?.name ?? serviceData.category,
     };
 
-    const applyLocalUpdate = () => {
+    const applyLocalUpdate = (finalService: Service) => {
       setServices((prev) => {
         let newServices = [...prev];
 
@@ -602,13 +601,13 @@ const AdminPage: React.FC = () => {
         }
 
         const existingIndex = newServices.findIndex(
-          (s) => s.id === updatedService.id
+          (s) => s.id === finalService.id
         );
 
         if (existingIndex > -1) {
-          newServices[existingIndex] = updatedService;
+          newServices[existingIndex] = finalService;
         } else {
-          newServices.push(updatedService);
+          newServices.push(finalService);
         }
 
         return newServices;
@@ -627,17 +626,34 @@ const AdminPage: React.FC = () => {
             return;
           }
 
-          // ⬇️ kirim service dengan service_category = ID
-          await updateServiceOnServer(idFromService, updatedService);
+          await updateServiceOnServer(idFromService, updatedServiceBase);
+
+          // untuk edit, pakai id existing
+          applyLocalUpdate({ ...updatedServiceBase, id: idFromService });
         } else {
-          await createServiceOnServer(
-            updatedService,
-            updatedService.category,
+          // CREATE
+          const newIdFromApi = await createServiceOnServer(
+            updatedServiceBase,
+            updatedServiceBase.category,
             serviceCategories
           );
+
+          // fallback kalau backend nggak kirim id
+          const fallbackId =
+            services.length > 0
+              ? Math.max(...services.map((s) => (s.id ? Number(s.id) : 0))) + 1
+              : 1;
+
+          const finalId = newIdFromApi ?? fallbackId;
+
+          const finalService: Service = {
+            ...updatedServiceBase,
+            id: finalId,
+          };
+
+          applyLocalUpdate(finalService);
         }
 
-        applyLocalUpdate();
         setIsServiceModalOpen(false);
         addNotification(
           `Layanan "${serviceData.name}" berhasil ${

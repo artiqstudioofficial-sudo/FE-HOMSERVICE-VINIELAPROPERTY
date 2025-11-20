@@ -1,5 +1,3 @@
-// ../components/ServiceFormModal.tsx
-
 import React, { useEffect, useMemo, useState } from "react";
 import { Service } from "../config/services";
 import { ServiceMasterCategory } from "../lib/api/admin";
@@ -7,7 +5,6 @@ import { ServiceMasterCategory } from "../lib/api/admin";
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  // param ke-2 sekarang akan berisi ID kategori (dalam bentuk string)
   onSave: (serviceData: Service, categoryValue: string) => void;
   serviceToEdit: Service | null;
   categoryToEdit: string | null;
@@ -23,7 +20,6 @@ const ServiceFormModal: React.FC<Props> = ({
   onSave,
   serviceToEdit,
   categoryToEdit,
-  allCategories,
   serviceCategories,
 }) => {
   const isEdit = !!serviceToEdit;
@@ -32,10 +28,8 @@ const ServiceFormModal: React.FC<Props> = ({
   const [price, setPrice] = useState<string>("");
   const [unitPrice, setUnitPrice] = useState<Service["unit_price"]>("unit");
 
-  // ⬇️ ini ID kategori (string), dikirim ke select.value
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
 
-  // label kategori untuk ditaruh di field Service.category (dipakai di UI)
   const [categoryLabel, setCategoryLabel] = useState<string>("");
 
   const [durationMinute, setDurationMinute] = useState<string>("");
@@ -45,7 +39,6 @@ const ServiceFormModal: React.FC<Props> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // List kategori dari master API → dipakai untuk select
   const categoryOptions = useMemo(() => serviceCategories, [serviceCategories]);
 
   useEffect(() => {
@@ -62,14 +55,12 @@ const ServiceFormModal: React.FC<Props> = ({
         (serviceToEdit.unit_price as Service["unit_price"]) || "unit"
       );
 
-      // ID kategori dari backend
       if (serviceToEdit.service_category) {
         setSelectedCategoryId(String(serviceToEdit.service_category));
       } else {
         setSelectedCategoryId("");
       }
 
-      // label kategori (fallback dari categoryToEdit atau dari serviceToEdit.category)
       setCategoryLabel(categoryToEdit || serviceToEdit.category || "");
 
       const dm = (serviceToEdit as any).duration_minute;
@@ -98,7 +89,7 @@ const ServiceFormModal: React.FC<Props> = ({
   const handleChangeSelectCategory = (
     e: React.ChangeEvent<HTMLSelectElement>
   ) => {
-    const value = e.target.value; // ini ID kategori (string)
+    const value = e.target.value;
     setSelectedCategoryId(value);
 
     const idNum = Number(value);
@@ -113,9 +104,7 @@ const ServiceFormModal: React.FC<Props> = ({
   ) => {
     const v = e.target.value;
     setCategoryLabel(v);
-    // kalau user override manual, kita biarkan id tetap apapun (boleh kosong)
     if (!v) {
-      // kalau kosong, boleh reset id juga
       setSelectedCategoryId("");
     }
   };
@@ -124,7 +113,7 @@ const ServiceFormModal: React.FC<Props> = ({
     e.preventDefault();
     if (!name.trim()) return;
     if (!price.trim()) return;
-    if (!categoryLabel.trim()) return; // minimal label harus ada
+    if (!categoryLabel.trim()) return;
 
     setIsSubmitting(true);
     try {
@@ -134,12 +123,12 @@ const ServiceFormModal: React.FC<Props> = ({
 
       const base: Service = {
         ...(serviceToEdit ? { id: serviceToEdit.id } : {}),
-        id: serviceToEdit.id,
+        id: serviceToEdit ? serviceToEdit.id : "",
         name: name.trim(),
         price: price.trim(),
         unit_price: unitPrice,
-        service_category: categoryIdNum, // ⬅️ ID kategori
-        category: categoryLabel.trim(), // ⬅️ label untuk UI
+        service_category: categoryIdNum,
+        category: categoryLabel.trim(),
       };
 
       const withExtra = {
@@ -150,7 +139,6 @@ const ServiceFormModal: React.FC<Props> = ({
         is_guarantee: isGuarantee,
       } as Service;
 
-      // param kedua: kirim ID kategori (string) → akan di-parse di AdminPage
       onSave(withExtra, selectedCategoryId);
     } finally {
       setIsSubmitting(false);

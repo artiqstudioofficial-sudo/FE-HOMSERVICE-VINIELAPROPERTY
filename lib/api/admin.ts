@@ -343,33 +343,40 @@ export async function fetchTechScheduleFromApi(
 
 export async function createServiceOnServer(
   serviceData: Service,
-  categoryName: string, // label (untuk fallback)
+  categoryName: string,
   serviceCategories: ServiceMasterCategory[]
-): Promise<void> {
+): Promise<number | null> {
   const service = serviceData as Service & ServiceBackendFields;
   const { durationMinutes, durationHours } = computeDuration(service);
 
-  // ⬇️ Prioritas pakai ID dari service.service_category
   const masterCategory =
     serviceCategories.find((c) => c.id === service.service_category) ||
     serviceCategories.find((c) => c.name === categoryName);
+
+  const serviceCategoryId =
+    masterCategory?.id ?? service.service_category ?? null;
 
   const payload = {
     name: service.name,
     price: String(service.price ?? 0),
     unit_price: normalizePriceUnit(service.unit_price),
     point: service.point ?? 0,
-    service_category_id: masterCategory ? masterCategory.id : null,
+    service_category: serviceCategoryId,
     duration_minute: durationMinutes,
     duration_hour: durationHours,
     is_guarantee: service.is_guarantee ?? false,
   };
 
-  await apiRequest(ADMIN_ENDPOINTS.serviceCreate, {
+  // asumsi apiRequest mengembalikan JSON response
+  const res: any = await apiRequest(ADMIN_ENDPOINTS.serviceCreate, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+
+  const newId = (res?.data && res.data.id) || res?.id || null;
+
+  return typeof newId === "number" ? newId : null;
 }
 
 // BACKEND expect: { id, name, price, unit_price, service_category (INT), duration_minute, duration_hour, is_guarantee }
@@ -385,7 +392,6 @@ export async function updateServiceOnServer(
     name: service.name,
     price: String(service.price ?? 0),
     unit_price: normalizePriceUnit(service.unit_price),
-    // ⬇️ SEKARANG INTEGER ID, BUKAN NAMA
     service_category: service.service_category,
     duration_minute: durationMinutes,
     duration_hour: durationHours,
