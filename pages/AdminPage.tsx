@@ -1,4 +1,5 @@
 // pages/AdminPage.tsx
+
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import BookingFormModal, {
@@ -27,7 +28,8 @@ import {
   updateBookingStatusOnServer,
   updateServiceOnServer,
   deleteServiceOnServer,
-  storeBookingOnServer, // <- tambahkan ini
+  storeBookingOnServer,
+  BOOKING_STATUS_TO_API_CODE,
 } from "../lib/api/admin";
 import { simulateNotification } from "../lib/notifications";
 import {
@@ -306,7 +308,7 @@ const AdminPage: React.FC = () => {
       bookings
         .filter((booking) => {
           const keyword = (searchTerm || "").toLowerCase();
-          const bookingName = (booking.name || "").toLowerCase();
+          const bookingName = (booking?.name || "").toLowerCase();
 
           const searchTermMatch = bookingName.includes(keyword);
           const statusMatch =
@@ -795,21 +797,34 @@ const AdminPage: React.FC = () => {
 
   const handleSaveNewBooking = async (payload: StoreBookingPayload) => {
     try {
-      const res = await storeBookingOnServer(payload);
+      // map status "Confirmed" / "On Site" dst -> kode angka untuk backend
+      const statusKey = (payload.status as BookingStatus) || "Confirmed";
+      const statusCode =
+        BOOKING_STATUS_TO_API_CODE[statusKey] ||
+        BOOKING_STATUS_TO_API_CODE["Confirmed"];
+
+      const apiPayload: StoreBookingPayload = {
+        ...payload,
+        status: statusCode,
+      };
+
+      const res = await storeBookingOnServer(apiPayload);
 
       addNotification(
         `Booking baru untuk ${payload.fullname} berhasil disimpan.`,
         "success"
       );
 
-      // reload booking dari server supaya data form_id/apply_id dsb up to date
+      // reload booking dari server supaya form_id/apply_id ke-sync
       await loadData();
 
       setIsAddBookingModalOpen(false);
     } catch (error: any) {
       console.error("Error saat menyimpan booking:", error);
       addNotification(
-        `Gagal menyimpan booking: ${error?.message || "Unknown error"}`,
+        `Gagal menyimpan booking: ${
+          error?.message || JSON.stringify(error) || "Unknown error"
+        }`,
         "error"
       );
     }

@@ -1,9 +1,11 @@
 // components/BookingFormModal.tsx
-import React, { useState, useEffect, useMemo } from "react";
+
+import React, { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
+
 import { Service } from "../config/services";
+import { User } from "../lib/api/admin";
 import {
-  User,
   BookingStatus,
   formatDateToKey,
   generateTimeSlots,
@@ -16,20 +18,12 @@ export interface StoreBookingPayload {
   address: string;
   service: number;
   user_id: number | null;
-  status: string;
+  status: BookingStatus | string;
   lat: number;
   lng: number;
   schedule_date: string;
   schedule_time: string;
 }
-
-// Lokasi default: Monas
-const DEFAULT_LOCATION = {
-  lat: -6.175392,
-  lng: 106.827153,
-  mapSrc:
-    "https://maps.google.com/maps?q=-6.175392,106.827153&z=16&output=embed",
-};
 
 interface BookingFormModalProps {
   isOpen: boolean;
@@ -43,6 +37,14 @@ interface BookingFormModalProps {
   };
 }
 
+// Lokasi default: Monas
+const DEFAULT_LOCATION = {
+  lat: -6.175392,
+  lng: 106.827153,
+  mapSrc:
+    "https://maps.google.com/maps?q=-6.175392,106.827153&z=16&output=embed",
+};
+
 const BookingFormModal: React.FC<BookingFormModalProps> = ({
   isOpen,
   onClose,
@@ -55,11 +57,11 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
     name: "",
     whatsapp: "",
     address: "",
-    service: "",
+    service: "", // id layanan (string)
     startDate: null as Date | null,
     endDate: null as Date | null,
     time: "",
-    technician: "",
+    technician: "", // user_id (string)
     status: "Confirmed" as BookingStatus,
   });
 
@@ -71,11 +73,10 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
   const [errors, setErrors] = useState<
     Partial<Record<keyof typeof formData | "location", string>>
   >({});
+
   const [mapSrc, setMapSrc] = useState(DEFAULT_LOCATION.mapSrc);
 
-  const safeServices = services ?? [];
-  const safeTechnicians = technicians ?? [];
-  const safeAvailability = availability ?? {
+  const safeAvailability = availability || {
     fullyBookedDates: [],
     bookedSlots: [],
   };
@@ -109,7 +110,6 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
         status: "Confirmed",
       });
       setErrors({});
-      // reset lokasi ke Monas setiap modal dibuka
       setLocation({ lat: DEFAULT_LOCATION.lat, lng: DEFAULT_LOCATION.lng });
       setMapSrc(DEFAULT_LOCATION.mapSrc);
     }
@@ -141,6 +141,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
     const newErrors: Partial<
       Record<keyof typeof formData | "location", string>
     > = {};
+
     if (!formData.name.trim()) newErrors.name = "Nama wajib diisi.";
     if (!formData.whatsapp.trim())
       newErrors.whatsapp = "Nomor WhatsApp wajib diisi.";
@@ -149,7 +150,6 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
     if (!formData.startDate) newErrors.startDate = "Tanggal wajib dipilih.";
     if (!formData.time) newErrors.time = "Waktu wajib dipilih.";
 
-    // location selalu ada (Monas), jadi tidak divalidasi lagi
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -261,6 +261,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
 
             {/* Order Details */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Layanan */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Layanan
@@ -274,7 +275,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                   <option value="" disabled>
                     -- Pilih Layanan --
                   </option>
-                  {safeServices.map((s) => (
+                  {services.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
                     </option>
@@ -285,6 +286,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                 )}
               </div>
 
+              {/* Teknisi */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Teknisi
@@ -296,14 +298,15 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
                 >
                   <option value="">Belum Ditugaskan</option>
-                  {safeTechnicians.map((t) => (
+                  {technicians.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.fullname || (t as any).name || t.username}
+                      {t.name || (t as any).fullname || t.username}
                     </option>
                   ))}
                 </select>
               </div>
 
+              {/* Status Awal */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Status Awal
@@ -346,6 +349,8 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                   </p>
                 )}
               </div>
+
+              {/* Waktu Mulai */}
               {formData.startDate ? (
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
@@ -357,6 +362,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                         formData.startDate!
                       )}-${time}`;
                       const isBooked = bookedSlots.has(slotKey);
+
                       return (
                         <button
                           type="button"
@@ -404,7 +410,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                 Lokasi (sementara default: Monas, Jakarta)
               </label>
               <p className="text-xs text-gray-500 mt-1">
-                Untuk saat ini, lokasi booking akan tersimpan di sekitar Monas
+                Untuk sekarang, lokasi booking akan tersimpan di sekitar Monas
                 (lat: {DEFAULT_LOCATION.lat}, lng: {DEFAULT_LOCATION.lng}).
               </p>
               <div className="mt-2 h-64 w-full rounded-lg overflow-hidden border dark:border-slate-600">
