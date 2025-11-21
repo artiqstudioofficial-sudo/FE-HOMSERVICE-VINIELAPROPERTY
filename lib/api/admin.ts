@@ -21,6 +21,7 @@ export const ADMIN_ENDPOINTS = {
   serviceCreate: "/admin/service-store",
   serviceUpdate: "/admin/service-update",
   serviceDelete: "/admin/service-delete",
+  storeBooking: "/admin/store-booking", // <--- TAMBAHAN
 } as const;
 
 /* -------------------------------------------------------------------------- */
@@ -114,6 +115,29 @@ type ServiceBackendFields = Partial<{
   point: number;
   is_guarantee: boolean;
 }>;
+
+/* ---------------------- Store Booking (Request/Response) ------------------- */
+
+export interface StoreBookingPayload {
+  fullname: string;
+  whatsapp: string;
+  address: string;
+  service: number; // id layanan
+  user_id: number | null; // id teknisi (boleh null kalau belum ditugaskan)
+  status: BookingStatus | string;
+  lat: number;
+  lng: number;
+  schedule_date: string; // "YYYY-MM-DD"
+  schedule_time: string; // "HH:mm"
+}
+
+export interface StoreBookingResponse {
+  error: boolean;
+  message: string;
+  data?: {
+    form_id: number;
+  };
+}
 
 /* -------------------------------------------------------------------------- */
 /*                              FORMAT & MAPPING                              */
@@ -339,6 +363,26 @@ export async function fetchTechScheduleFromApi(
   );
 }
 
+// -------------------------- Store Booking API -------------------------- //
+
+export async function storeBookingOnServer(
+  payload: StoreBookingPayload
+): Promise<StoreBookingResponse> {
+  const res: any = await apiRequest(ADMIN_ENDPOINTS.storeBooking, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  // diasumsikan backend pakai format:
+  // { error: boolean, message: string, data: { form_id: number } }
+  return {
+    error: !!res?.error,
+    message: res?.message ?? "",
+    data: res?.data,
+  };
+}
+
 // --------------------- Create & Update Service API --------------------- //
 
 export async function createServiceOnServer(
@@ -367,7 +411,6 @@ export async function createServiceOnServer(
     is_guarantee: service.is_guarantee ?? false,
   };
 
-  // asumsi apiRequest mengembalikan JSON response
   const res: any = await apiRequest(ADMIN_ENDPOINTS.serviceCreate, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

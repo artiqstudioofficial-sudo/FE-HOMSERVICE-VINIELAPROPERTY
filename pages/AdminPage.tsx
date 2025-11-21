@@ -1,6 +1,9 @@
+// pages/AdminPage.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-import BookingFormModal from "../components/BookingFormModal";
+import BookingFormModal, {
+  StoreBookingPayload,
+} from "../components/BookingFormModal";
 import GenericConfirmationModal from "../components/GenericConfirmationModal";
 import ServiceFormModal from "../components/ServiceFormModal";
 
@@ -24,6 +27,7 @@ import {
   updateBookingStatusOnServer,
   updateServiceOnServer,
   deleteServiceOnServer,
+  storeBookingOnServer, // <- tambahkan ini
 } from "../lib/api/admin";
 import { simulateNotification } from "../lib/notifications";
 import {
@@ -301,9 +305,10 @@ const AdminPage: React.FC = () => {
     () =>
       bookings
         .filter((booking) => {
-          const searchTermMatch = booking.name
-            .toLowerCase()
-            .includes(searchTerm.toLowerCase());
+          const keyword = (searchTerm || "").toLowerCase();
+          const bookingName = (booking.name || "").toLowerCase();
+
+          const searchTermMatch = bookingName.includes(keyword);
           const statusMatch =
             statusFilter === "all" || booking.status === statusFilter;
           const technicianMatch =
@@ -570,11 +575,6 @@ const AdminPage: React.FC = () => {
     setIsServiceModalOpen(true);
   };
 
-  // di atas: import sudah sesuai
-  // import { updateServiceOnServer, createServiceOnServer, ... } from "../lib/api/admin";
-
-  // ...
-
   const handleSaveService = (serviceData: Service, categoryValue: string) => {
     const isEdit = !!serviceToEdit;
 
@@ -585,7 +585,6 @@ const AdminPage: React.FC = () => {
 
     const master = serviceCategories.find((c) => c.id === categoryId);
 
-    // base service yang sudah rapi (pakai ID kategori & label)
     const updatedServiceBase: Service = {
       ...serviceData,
       service_category: categoryId,
@@ -628,17 +627,14 @@ const AdminPage: React.FC = () => {
 
           await updateServiceOnServer(idFromService, updatedServiceBase);
 
-          // untuk edit, pakai id existing
           applyLocalUpdate({ ...updatedServiceBase, id: idFromService });
         } else {
-          // CREATE
           const newIdFromApi = await createServiceOnServer(
             updatedServiceBase,
             updatedServiceBase.category,
             serviceCategories
           );
 
-          // fallback kalau backend nggak kirim id
           const fallbackId =
             services.length > 0
               ? Math.max(...services.map((s) => (s.id ? Number(s.id) : 0))) + 1
@@ -677,13 +673,8 @@ const AdminPage: React.FC = () => {
     const { serviceId, serviceName } = serviceToDelete;
 
     try {
-      // 1. Hapus di server
       await deleteServiceOnServer(serviceId);
-
-      // 2. Hapus di state lokal
       setServices((prev) => prev.filter((s) => s.id !== serviceId));
-
-      // 3. Reset state & notif
       setServiceToDelete(null);
       addNotification(`Layanan "${serviceName}" telah dihapus.`, "success");
     } catch (error) {
@@ -802,44 +793,26 @@ const AdminPage: React.FC = () => {
 
   /* --------------------------- HANDLER NEW BOOKING -------------------------- */
 
-  const handleSaveNewBooking = (
-    newBookingData: Omit<AdminBooking, "id" | "formId" | "applyId">
-  ) => {
-    const allBookings = getBookings() as AdminBooking[];
-    const newBooking: AdminBooking = {
-      ...newBookingData,
-      id:
-        allBookings.length > 0
-          ? Math.max(...allBookings.map((b) => b.id)) + 1
-          : 1,
-    };
+  const handleSaveNewBooking = async (payload: StoreBookingPayload) => {
+    try {
+      const res = await storeBookingOnServer(payload);
 
-    const updatedBookings = [...allBookings, newBooking];
-    saveBookings(updatedBookings);
-    setBookings(updatedBookings);
+      addNotification(
+        `Booking baru untuk ${payload.fullname} berhasil disimpan.`,
+        "success"
+      );
 
-    const currentAvailability = getAvailability();
-    const newBookedSlots = [
-      ...(currentAvailability.bookedSlots || []),
-      `${formatDateToKey(new Date(newBooking.startDate))}-${newBooking.time}`,
-    ];
-    const newFullyBookedDates = [...currentAvailability.fullyBookedDates];
+      // reload booking dari server supaya data form_id/apply_id dsb up to date
+      await loadData();
 
-    saveAvailability({
-      fullyBookedDates: newFullyBookedDates,
-      bookedSlots: newBookedSlots,
-    });
-
-    setOriginalFullyBooked(new Set(newFullyBookedDates));
-    setDraftFullyBooked(new Set(newFullyBookedDates));
-    setOriginalBookedSlots(new Set(newBookedSlots));
-    setDraftBookedSlots(new Set(newBookedSlots));
-
-    addNotification(
-      `Booking baru untuk ${newBooking.name} berhasil ditambahkan.`,
-      "success"
-    );
-    setIsAddBookingModalOpen(false);
+      setIsAddBookingModalOpen(false);
+    } catch (error: any) {
+      console.error("Error saat menyimpan booking:", error);
+      addNotification(
+        `Gagal menyimpan booking: ${error?.message || "Unknown error"}`,
+        "error"
+      );
+    }
   };
 
   /* --------------------------------- KPI DATA -------------------------------- */
