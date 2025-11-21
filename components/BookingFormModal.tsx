@@ -1,20 +1,14 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { X, Search } from "lucide-react";
-import { ServiceCategory } from "../config/services";
-import {
-  User,
-  Booking,
-  BookingStatus,
-  formatDateToKey,
-  generateTimeSlots,
-} from "../lib/storage";
-import Calendar from "./Calendar";
+import { Search, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Service } from '../config/services'; // ← pakai list service flat
+import { Booking, BookingStatus, formatDateToKey, generateTimeSlots, User } from '../lib/storage';
+import Calendar from './Calendar';
 
 interface BookingFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (booking: Omit<Booking, "id">) => void;
-  services: ServiceCategory[];
+  onSave: (booking: Omit<Booking, 'id'>) => void;
+  services: Service[]; // ← BUKAN ServiceCategory[] lagi
   technicians: User[];
   availability: {
     fullyBookedDates: string[];
@@ -31,69 +25,71 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
   availability,
 }) => {
   const [formData, setFormData] = useState({
-    name: "",
-    whatsapp: "",
-    address: "",
-    service: "",
+    name: '',
+    whatsapp: '',
+    address: '',
+    service: '',
     startDate: null as Date | null,
     endDate: null as Date | null,
-    time: "",
-    technician: "Belum Ditugaskan",
-    status: "Confirmed" as BookingStatus,
+    time: '',
+    technician: 'Belum Ditugaskan',
+    status: 'Confirmed' as BookingStatus,
   });
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
-    null
+
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [errors, setErrors] = useState<Partial<Record<keyof typeof formData | 'location', string>>>(
+    {},
   );
-  const [errors, setErrors] = useState<
-    Partial<Record<keyof typeof formData | "location", string>>
-  >({});
-  const [addressQuery, setAddressQuery] = useState("");
-  const [mapSrc, setMapSrc] = useState(
-    "https://maps.google.com/maps?q=Jakarta&z=11&output=embed"
-  );
-  const [locationMessage, setLocationMessage] = useState("");
+  const [addressQuery, setAddressQuery] = useState('');
+  const [mapSrc, setMapSrc] = useState('https://maps.google.com/maps?q=Jakarta&z=11&output=embed');
+  const [locationMessage, setLocationMessage] = useState('');
   const [isGeocoding, setIsGeocoding] = useState(false);
 
+  // ---------- SAFETY WRAPPER DATA ----------
+  const safeServices = services ?? [];
+  const safeTechnicians = technicians ?? [];
+  const safeAvailability = availability ?? {
+    fullyBookedDates: [],
+    bookedSlots: [],
+  };
+
   const fullyBookedDates = useMemo(
-    () => new Set(availability.fullyBookedDates),
-    [availability.fullyBookedDates]
+    () => new Set(safeAvailability.fullyBookedDates || []),
+    [safeAvailability.fullyBookedDates],
   );
+
   const bookedSlots = useMemo(
-    () => new Set(availability.bookedSlots || []),
-    [availability.bookedSlots]
+    () => new Set(safeAvailability.bookedSlots || []),
+    [safeAvailability.bookedSlots],
   );
-  const availableTimes = useMemo(
-    () => generateTimeSlots(9, 17, 12, 13, 30),
-    []
-  );
+
+  const availableTimes = useMemo(() => generateTimeSlots(9, 17, 12, 13, 30), []);
 
   useEffect(() => {
     if (isOpen) {
       // Reset form on open
       setFormData({
-        name: "",
-        whatsapp: "",
-        address: "",
-        service: "",
+        name: '',
+        whatsapp: '',
+        address: '',
+        service: '',
         startDate: null,
         endDate: null,
-        time: "",
-        technician: "Belum Ditugaskan",
-        status: "Confirmed",
+        time: '',
+        technician: 'Belum Ditugaskan',
+        status: 'Confirmed',
       });
       setLocation(null);
       setErrors({});
-      setAddressQuery("");
-      setMapSrc("https://maps.google.com/maps?q=Jakarta&z=11&output=embed");
-      setLocationMessage("");
+      setAddressQuery('');
+      setMapSrc('https://maps.google.com/maps?q=Jakarta&z=11&output=embed');
+      setLocationMessage('');
       setIsGeocoding(false);
     }
   }, [isOpen]);
 
   const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
     const { name, value } = e.target;
     setErrors((prev) => ({ ...prev, [name]: undefined }));
@@ -107,77 +103,67 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
       ...formData,
       startDate: date,
       endDate: newEndDate,
-      time: "",
+      time: '',
     });
     setErrors((prev) => ({ ...prev, startDate: undefined, time: undefined }));
   };
 
   const handleSearchAddress = async () => {
     if (!addressQuery.trim()) {
-      setLocationMessage("Mohon masukkan alamat untuk dicari.");
+      setLocationMessage('Mohon masukkan alamat untuk dicari.');
       return;
     }
 
     setIsGeocoding(true);
-    setLocationMessage("");
+    setLocationMessage('');
     setErrors((prev) => ({ ...prev, location: undefined }));
 
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
-      console.error("Geocoding API Key is missing.");
-      setLocationMessage("Konfigurasi API Key Geocoding tidak ditemukan.");
+      console.error('Geocoding API Key is missing.');
+      setLocationMessage('Konfigurasi API Key Geocoding tidak ditemukan.');
       setIsGeocoding(false);
       return;
     }
 
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
-      addressQuery
+      addressQuery,
     )}&key=${apiKey}`;
 
     try {
       const response = await fetch(url);
       if (!response.ok) {
-        throw new Error("Network response was not ok");
+        throw new Error('Network response was not ok');
       }
       const data = await response.json();
 
-      if (data.status === "OK" && data.results.length > 0) {
+      if (data.status === 'OK' && data.results.length > 0) {
         const { lat, lng } = data.results[0].geometry.location;
         setLocation({ lat, lng });
-        setMapSrc(
-          `https://maps.google.com/maps?q=${lat},${lng}&z=16&output=embed`
-        );
-        setLocationMessage("Lokasi berhasil ditemukan dan ditandai di peta.");
+        setMapSrc(`https://maps.google.com/maps?q=${lat},${lng}&z=16&output=embed`);
+        setLocationMessage('Lokasi berhasil ditemukan dan ditandai di peta.');
       } else {
         setLocation(null);
-        setLocationMessage(
-          "Alamat tidak ditemukan. Coba gunakan alamat yang lebih spesifik."
-        );
+        setLocationMessage('Alamat tidak ditemukan. Coba gunakan alamat yang lebih spesifik.');
       }
     } catch (error) {
-      console.error("Geocoding API error:", error);
+      console.error('Geocoding API error:', error);
       setLocation(null);
-      setLocationMessage(
-        "Terjadi kesalahan saat mencari alamat. Silakan coba lagi."
-      );
+      setLocationMessage('Terjadi kesalahan saat mencari alamat. Silakan coba lagi.');
     } finally {
       setIsGeocoding(false);
     }
   };
 
   const validate = () => {
-    const newErrors: Partial<
-      Record<keyof typeof formData | "location", string>
-    > = {};
-    if (!formData.name.trim()) newErrors.name = "Nama wajib diisi.";
-    if (!formData.whatsapp.trim())
-      newErrors.whatsapp = "Nomor WhatsApp wajib diisi.";
-    if (!formData.address.trim()) newErrors.address = "Alamat wajib diisi.";
-    if (!formData.service) newErrors.service = "Layanan wajib dipilih.";
-    if (!formData.startDate) newErrors.startDate = "Tanggal wajib dipilih.";
-    if (!formData.time) newErrors.time = "Waktu wajib dipilih.";
-    if (!location)
-      newErrors.location = "Mohon cari alamat dan tandai lokasi di peta.";
+    const newErrors: Partial<Record<keyof typeof formData | 'location', string>> = {};
+    if (!formData.name.trim()) newErrors.name = 'Nama wajib diisi.';
+    if (!formData.whatsapp.trim()) newErrors.whatsapp = 'Nomor WhatsApp wajib diisi.';
+    if (!formData.address.trim()) newErrors.address = 'Alamat wajib diisi.';
+    if (!formData.service) newErrors.service = 'Layanan wajib dipilih.';
+    if (!formData.startDate) newErrors.startDate = 'Tanggal wajib dipilih.';
+    if (!formData.time) newErrors.time = 'Waktu wajib dipilih.';
+    if (!location) newErrors.location = 'Mohon cari alamat dan tandai lokasi di peta.';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -186,7 +172,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validate()) {
-      const bookingData: Omit<Booking, "id"> = {
+      const bookingData: Omit<Booking, 'id'> = {
         ...formData,
         startDate: formData.startDate!.toISOString(),
         endDate: formData.endDate!.toISOString(),
@@ -236,9 +222,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                   onChange={handleChange}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
                 />
-                {errors.name && (
-                  <p className="text-red-500 text-xs mt-1">{errors.name}</p>
-                )}
+                {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -251,9 +235,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                   onChange={handleChange}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
                 />
-                {errors.whatsapp && (
-                  <p className="text-red-500 text-xs mt-1">{errors.whatsapp}</p>
-                )}
+                {errors.whatsapp && <p className="text-red-500 text-xs mt-1">{errors.whatsapp}</p>}
               </div>
             </div>
             <div>
@@ -267,13 +249,12 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                 onChange={handleChange}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
               ></textarea>
-              {errors.address && (
-                <p className="text-red-500 text-xs mt-1">{errors.address}</p>
-              )}
+              {errors.address && <p className="text-red-500 text-xs mt-1">{errors.address}</p>}
             </div>
 
             {/* Order Details */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Layanan pakai service list dari API */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Layanan
@@ -287,20 +268,16 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                   <option value="" disabled>
                     -- Pilih Layanan --
                   </option>
-                  {services.map((category) => (
-                    <optgroup key={category.category} label={category.category}>
-                      {category.services.map((s) => (
-                        <option key={s.name} value={s.name}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </optgroup>
+                  {safeServices.map((s) => (
+                    <option key={s.name} value={s.name}>
+                      {s.name}
+                    </option>
                   ))}
                 </select>
-                {errors.service && (
-                  <p className="text-red-500 text-xs mt-1">{errors.service}</p>
-                )}
+                {errors.service && <p className="text-red-500 text-xs mt-1">{errors.service}</p>}
               </div>
+
+              {/* Teknisi */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Teknisi
@@ -312,13 +289,15 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
                 >
                   <option>Belum Ditugaskan</option>
-                  {technicians.map((t) => (
+                  {safeTechnicians.map((t) => (
                     <option key={t.id} value={t.name}>
                       {t.name}
                     </option>
                   ))}
                 </select>
               </div>
+
+              {/* Status */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Status Awal
@@ -329,13 +308,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                   onChange={handleChange}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
                 >
-                  {[
-                    "Confirmed",
-                    "On Site",
-                    "In Progress",
-                    "Completed",
-                    "Cancelled",
-                  ].map((s) => (
+                  {['Confirmed', 'On Site', 'In Progress', 'Completed', 'Cancelled'].map((s) => (
                     <option key={s} value={s}>
                       {s}
                     </option>
@@ -356,9 +329,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                   fullyBookedDates={fullyBookedDates}
                 />
                 {errors.startDate && (
-                  <p className="text-red-500 text-xs mt-1">
-                    {errors.startDate}
-                  </p>
+                  <p className="text-red-500 text-xs mt-1">{errors.startDate}</p>
                 )}
               </div>
               {formData.startDate ? (
@@ -368,9 +339,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                   </label>
                   <div className="grid grid-cols-3 gap-2">
                     {availableTimes.map((time) => {
-                      const slotKey = `${formatDateToKey(
-                        formData.startDate!
-                      )}-${time}`;
+                      const slotKey = `${formatDateToKey(formData.startDate!)}-${time}`;
                       const isBooked = bookedSlots.has(slotKey);
                       return (
                         <button
@@ -380,12 +349,12 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                           disabled={isBooked}
                           className={`p-2 rounded-md text-sm font-semibold border-2 transition-colors ${
                             formData.time === time
-                              ? "bg-primary text-white border-primary"
-                              : "bg-transparent border-gray-300 dark:border-slate-600"
+                              ? 'bg-primary text-white border-primary'
+                              : 'bg-transparent border-gray-300 dark:border-slate-600'
                           } ${
                             isBooked
-                              ? "bg-gray-200 dark:bg-slate-600 text-gray-400 dark:text-gray-500 line-through cursor-not-allowed"
-                              : "hover:border-primary"
+                              ? 'bg-gray-200 dark:bg-slate-600 text-gray-400 dark:text-gray-500 line-through cursor-not-allowed'
+                              : 'hover:border-primary'
                           }`}
                         >
                           {time}
@@ -393,9 +362,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                       );
                     })}
                   </div>
-                  {errors.time && (
-                    <p className="text-red-500 text-xs mt-1">{errors.time}</p>
-                  )}
+                  {errors.time && <p className="text-red-500 text-xs mt-1">{errors.time}</p>}
                 </div>
               ) : (
                 <div>
@@ -403,9 +370,7 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                     Waktu Mulai
                   </label>
                   <div className="h-48 flex items-center justify-center bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-                    <p className="text-sm text-gray-500">
-                      Pilih tanggal dahulu
-                    </p>
+                    <p className="text-sm text-gray-500">Pilih tanggal dahulu</p>
                   </div>
                 </div>
               )}
@@ -454,18 +419,14 @@ const BookingFormModal: React.FC<BookingFormModalProps> = ({
                   ) : (
                     <Search size={16} />
                   )}
-                  {isGeocoding ? "Mencari..." : "Cari"}
+                  {isGeocoding ? 'Mencari...' : 'Cari'}
                 </button>
               </div>
-              {errors.location && (
-                <p className="text-red-500 text-xs mt-1">{errors.location}</p>
-              )}
+              {errors.location && <p className="text-red-500 text-xs mt-1">{errors.location}</p>}
               {locationMessage && (
                 <p
                   className={`text-xs mt-2 ${
-                    location
-                      ? "text-green-600 dark:text-green-400"
-                      : "text-red-500"
+                    location ? 'text-green-600 dark:text-green-400' : 'text-red-500'
                   }`}
                 >
                   {locationMessage}
