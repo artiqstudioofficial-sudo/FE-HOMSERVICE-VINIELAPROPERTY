@@ -1,5 +1,5 @@
 // components/admin/sections/TechniciansSection.tsx
-import { Settings, UserPlus } from 'lucide-react';
+import { PencilLine, Trash2, UserPlus } from 'lucide-react';
 import React from 'react';
 
 type User = {
@@ -61,14 +61,14 @@ const TechniciansSection: React.FC<Props> = ({
                   className="p-2 text-blue-600 hover:bg-blue-100 dark:hover:bg-slate-700 rounded-full"
                   title="Edit User"
                 >
-                  <Settings size={18} />
+                  <PencilLine className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => onRequestDelete(user)}
                   className="p-2 text-red-600 hover:bg-red-100 dark:hover:bg-slate-700 rounded-full"
                   title="Hapus User"
                 >
-                  <Settings size={18} />
+                  <Trash2 className="w-4 h-4" />
                 </button>
               </div>
             </div>

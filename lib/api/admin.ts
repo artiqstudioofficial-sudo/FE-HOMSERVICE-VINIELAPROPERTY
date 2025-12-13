@@ -1,27 +1,28 @@
 // ../lib/api/admin.ts
 
-import { Service } from "../../config/services";
-import { Booking, BookingStatus } from "../storage";
-import { apiArray, apiRequest, formatDateForApi } from "./client";
+import { Service } from '../../config/services';
+import { Booking, BookingStatus } from '../storage';
+import { apiArray, apiRequest, formatDateForApi } from './client';
 
-export { formatDateForApi } from "./client";
+export { formatDateForApi } from './client';
 
 /* -------------------------------------------------------------------------- */
 /*                               ADMIN ENDPOINTS                              */
 /* -------------------------------------------------------------------------- */
 
 export const ADMIN_ENDPOINTS = {
-  users: "/admin/user-management-list",
-  roles: "/admin/user-role-list",
-  serviceCategories: "/admin/service-category-list",
-  bookings: "/admin/user-booking-list",
-  services: "/admin/service-list",
-  updateBookingStatus: "/admin/update-booking-status",
-  techSchedule: "/admin/tech-schedule",
-  serviceCreate: "/admin/service-store",
-  serviceUpdate: "/admin/service-update",
-  serviceDelete: "/admin/service-delete",
-  storeBooking: "/admin/store-booking",
+  users: '/admin/user-management-list',
+  userDelete: '/admin/user-management-delete',
+  roles: '/admin/user-role-list',
+  serviceCategories: '/admin/service-category-list',
+  bookings: '/admin/user-booking-list',
+  services: '/admin/service-list',
+  updateBookingStatus: '/admin/update-booking-status',
+  techSchedule: '/admin/tech-schedule',
+  serviceCreate: '/admin/service-store',
+  serviceUpdate: '/admin/service-update',
+  serviceDelete: '/admin/service-delete',
+  storeBooking: '/admin/store-booking',
 } as const;
 
 /* -------------------------------------------------------------------------- */
@@ -144,40 +145,40 @@ export interface StoreBookingResponse {
 /* -------------------------------------------------------------------------- */
 
 const API_STATUS_TO_BOOKING: Record<string, BookingStatus> = {
-  INPROGRESS: "In Progress",
-  IN_PROGRESS: "In Progress",
-  DONE: "Completed",
-  COMPLETED: "Completed",
-  CANCELLED: "Cancelled",
-  CANCELED: "Cancelled",
-  ONSITE: "On Site",
-  ON_SITE: "On Site",
+  INPROGRESS: 'In Progress',
+  IN_PROGRESS: 'In Progress',
+  DONE: 'Completed',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+  CANCELED: 'Cancelled',
+  ONSITE: 'On Site',
+  ON_SITE: 'On Site',
 };
 
 export const mapApiStatusToBookingStatus = (status: string): BookingStatus =>
-  API_STATUS_TO_BOOKING[status.toUpperCase()] ?? "Confirmed";
+  API_STATUS_TO_BOOKING[status.toUpperCase()] ?? 'Confirmed';
 
 export const BOOKING_STATUS_TO_API_CODE: Record<BookingStatus, string> = {
-  Confirmed: "1",
-  "On Site": "2",
-  "In Progress": "3",
-  Completed: "4",
-  Cancelled: "5",
+  Confirmed: '1',
+  'On Site': '2',
+  'In Progress': '3',
+  Completed: '4',
+  Cancelled: '5',
 };
 
-const PRICE_UNIT_ALIASES: Record<string, Service["unit_price"]> = {
-  unit: "unit",
-  jam: "jam",
-  hour: "jam",
-  hours: "jam",
-  kg: "kg",
-  m2: "m²",
-  "m²": "m²",
+const PRICE_UNIT_ALIASES: Record<string, Service['unit_price']> = {
+  unit: 'unit',
+  jam: 'jam',
+  hour: 'jam',
+  hours: 'jam',
+  kg: 'kg',
+  m2: 'm²',
+  'm²': 'm²',
 };
 
-function normalizePriceUnit(raw?: string | null): Service["unit_price"] {
-  const key = (raw ?? "").toString().toLowerCase();
-  return PRICE_UNIT_ALIASES[key] ?? "unit";
+function normalizePriceUnit(raw?: string | null): Service['unit_price'] {
+  const key = (raw ?? '').toString().toLowerCase();
+  return PRICE_UNIT_ALIASES[key] ?? 'unit';
 }
 
 function computeDuration(service: Service & ServiceBackendFields): {
@@ -187,10 +188,7 @@ function computeDuration(service: Service & ServiceBackendFields): {
   const fromBackendMinute = service.duration_minute;
   const fromBackendHour = service.duration_hour;
 
-  if (
-    typeof fromBackendMinute === "number" ||
-    typeof fromBackendHour === "number"
-  ) {
+  if (typeof fromBackendMinute === 'number' || typeof fromBackendHour === 'number') {
     const minutes = fromBackendMinute ?? (fromBackendHour ?? 0) * 60;
     const hours = fromBackendHour ?? Math.floor(minutes / 60);
     return {
@@ -219,7 +217,7 @@ export async function fetchUsersFromApi(): Promise<User[]> {
       username: u.username,
       role: u.role,
       created_at: u.created_at,
-    })
+    }),
   );
 }
 
@@ -230,20 +228,30 @@ export async function fetchRolesFromApi(): Promise<UserRole[]> {
     (r): UserRole => ({
       id: r.id,
       name: r.name,
-    })
+    }),
   );
 }
 
-export async function fetchServiceCategoriesFromApi(): Promise<
-  ServiceMasterCategory[]
-> {
+export async function deleteUserOnServer(userId: number): Promise<void> {
+  var payload = {
+    id: userId,
+  };
+
+  await apiRequest(ADMIN_ENDPOINTS.userDelete, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchServiceCategoriesFromApi(): Promise<ServiceMasterCategory[]> {
   const data = await apiArray<any>(ADMIN_ENDPOINTS.serviceCategories);
 
   return data.map(
     (c): ServiceMasterCategory => ({
       id: c.id,
       name: c.name,
-    })
+    }),
   );
 }
 
@@ -267,7 +275,7 @@ export async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
       endDate: scheduleDate,
       time: row.schedule_time,
 
-      technician: row.technician_name || "Belum Ditugaskan",
+      technician: row.technician_name || 'Belum Ditugaskan',
       technicianUserId: row.technician_id ?? null,
 
       status,
@@ -278,10 +286,8 @@ export async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
       startTime: null,
       endTime: null,
       workDurationMinutes: 0,
-      additionalCosts: row.additional_cost
-        ? Number(row.additional_cost) || 0
-        : 0,
-      note: row.note || "",
+      additionalCosts: row.additional_cost ? Number(row.additional_cost) || 0 : 0,
+      note: row.note || '',
       photos: {
         arrival: row.arrive_photo || undefined,
         before: row.before_photo || undefined,
@@ -317,7 +323,7 @@ export async function fetchServicesFromApi(): Promise<Service[]> {
 export async function updateBookingStatusOnServer(
   formId: number,
   newStatus: BookingStatus,
-  userId: number
+  userId: number,
 ): Promise<void> {
   const statusCode = BOOKING_STATUS_TO_API_CODE[newStatus];
   if (!statusCode) {
@@ -331,23 +337,19 @@ export async function updateBookingStatusOnServer(
   };
 
   await apiRequest(ADMIN_ENDPOINTS.updateBookingStatus, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
 }
 
 // --------------------------- Tech Schedule ---------------------------- //
 
-export async function fetchTechScheduleFromApi(
-  date: Date
-): Promise<ApiTechScheduleByUser[]> {
+export async function fetchTechScheduleFromApi(date: Date): Promise<ApiTechScheduleByUser[]> {
   const dateStr = formatDateForApi(date);
 
   const data = await apiArray<any>(
-    `${ADMIN_ENDPOINTS.techSchedule}?schedule_date=${encodeURIComponent(
-      dateStr
-    )}`
+    `${ADMIN_ENDPOINTS.techSchedule}?schedule_date=${encodeURIComponent(dateStr)}`,
   );
 
   return data.map(
@@ -359,24 +361,24 @@ export async function fetchTechScheduleFromApi(
         : Array.isArray(row.schedules_json)
         ? (row.schedules_json as ApiTechScheduleItem[])
         : [],
-    })
+    }),
   );
 }
 
 // -------------------------- Store Booking API -------------------------- //
 
 export async function storeBookingOnServer(
-  payload: StoreBookingPayload
+  payload: StoreBookingPayload,
 ): Promise<StoreBookingResponse> {
   const res: any = await apiRequest(ADMIN_ENDPOINTS.storeBooking, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
 
   return {
     error: !!res?.error,
-    message: res?.message ?? "",
+    message: res?.message ?? '',
     data: res?.data,
   };
 }
@@ -386,7 +388,7 @@ export async function storeBookingOnServer(
 export async function createServiceOnServer(
   serviceData: Service,
   categoryName: string,
-  serviceCategories: ServiceMasterCategory[]
+  serviceCategories: ServiceMasterCategory[],
 ): Promise<number | null> {
   const service = serviceData as Service & ServiceBackendFields;
   const { durationMinutes, durationHours } = computeDuration(service);
@@ -395,8 +397,7 @@ export async function createServiceOnServer(
     serviceCategories.find((c) => c.id === service.service_category) ||
     serviceCategories.find((c) => c.name === categoryName);
 
-  const serviceCategoryId =
-    masterCategory?.id ?? service.service_category ?? null;
+  const serviceCategoryId = masterCategory?.id ?? service.service_category ?? null;
 
   const payload = {
     name: service.name,
@@ -410,21 +411,18 @@ export async function createServiceOnServer(
   };
 
   const res: any = await apiRequest(ADMIN_ENDPOINTS.serviceCreate, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
 
   const newId = (res?.data && res.data.id) || res?.id || null;
 
-  return typeof newId === "number" ? newId : null;
+  return typeof newId === 'number' ? newId : null;
 }
 
 // BACKEND expect: { id, name, price, unit_price, service_category (INT), duration_minute, duration_hour, is_guarantee }
-export async function updateServiceOnServer(
-  id: number,
-  serviceData: Service
-): Promise<void> {
+export async function updateServiceOnServer(id: number, serviceData: Service): Promise<void> {
   const service = serviceData as Service & ServiceBackendFields;
   const { durationMinutes, durationHours } = computeDuration(service);
 
@@ -440,8 +438,8 @@ export async function updateServiceOnServer(
   };
 
   await apiRequest(ADMIN_ENDPOINTS.serviceUpdate, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
 }
@@ -452,8 +450,8 @@ export async function deleteServiceOnServer(id: number): Promise<void> {
   const payload = { id: String(id) };
 
   await apiRequest(ADMIN_ENDPOINTS.serviceDelete, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
 }

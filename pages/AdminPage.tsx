@@ -1,23 +1,22 @@
-// pages/AdminPage.tsx
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import BookingFormModal, { StoreBookingPayload } from '../components/BookingFormModal';
+import GenericConfirmationModal from '../components/GenericConfirmationModal';
+import ServiceFormModal from '../components/ServiceFormModal';
 
-import BookingFormModal, {
-  StoreBookingPayload,
-} from "../components/BookingFormModal";
-import GenericConfirmationModal from "../components/GenericConfirmationModal";
-import ServiceFormModal from "../components/ServiceFormModal";
-
-import { Service } from "../config/services";
-import { useAuth } from "../contexts/AuthContext";
-import { useNotification } from "../contexts/NotificationContext";
+import { Service } from '../config/services';
+import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
 import {
   AdminBooking,
   ApiTechScheduleByUser,
+  BOOKING_STATUS_TO_API_CODE,
   ServiceMasterCategory,
   User,
   UserRole,
   createServiceOnServer,
+  deleteServiceOnServer,
+  deleteUserOnServer,
   fetchBookingsFromApi,
   fetchRolesFromApi,
   fetchServiceCategoriesFromApi,
@@ -25,13 +24,12 @@ import {
   fetchTechScheduleFromApi,
   fetchUsersFromApi,
   mapApiStatusToBookingStatus,
+  storeBookingOnServer,
   updateBookingStatusOnServer,
   updateServiceOnServer,
-  deleteServiceOnServer,
-  storeBookingOnServer,
-  BOOKING_STATUS_TO_API_CODE,
-} from "../lib/api/admin";
-import { simulateNotification } from "../lib/notifications";
+} from '../lib/api/admin';
+
+import { simulateNotification } from '../lib/notifications';
 import {
   BookingStatus,
   formatDateToKey,
@@ -40,53 +38,43 @@ import {
   getBookings,
   saveAvailability,
   saveBookings,
-} from "../lib/storage";
+} from '../lib/storage';
 
-import AdminBookingsSection from "@/components/admin/booking/AdminBookingSection";
-import AdminHeader from "@/components/admin/layout/AdminHeader";
-import AdminSidebar from "@/components/admin/layout/AdminSidebar";
-import TechnicianFormModal from "@/components/admin/modals/TechnicianFormModal";
-import AvailabilitySection from "@/components/admin/sections/AvailabilitySection";
-import KpiSection from "@/components/admin/sections/KpiSection";
-import MapSection from "@/components/admin/sections/MapSection";
-import ScheduleSection from "@/components/admin/sections/ScheduleSection";
-import ServicesSection from "@/components/admin/sections/ServicesSection";
-import TechniciansSection from "@/components/admin/sections/TechniciansSection";
+import AdminBookingsSection from '@/components/admin/booking/AdminBookingSection';
+import AdminHeader from '@/components/admin/layout/AdminHeader';
+import AdminSidebar from '@/components/admin/layout/AdminSidebar';
+import TechnicianFormModal from '@/components/admin/modals/TechnicianFormModal';
+import AvailabilitySection from '@/components/admin/sections/AvailabilitySection';
+import KpiSection from '@/components/admin/sections/KpiSection';
+import MapSection from '@/components/admin/sections/MapSection';
+import ScheduleSection from '@/components/admin/sections/ScheduleSection';
+import ServicesSection from '@/components/admin/sections/ServicesSection';
+import TechniciansSection from '@/components/admin/sections/TechniciansSection';
 
 export type AdminSection =
-  | "kpi"
-  | "bookings"
-  | "schedule"
-  | "map"
-  | "technicians"
-  | "services"
-  | "availability";
+  | 'kpi'
+  | 'bookings'
+  | 'schedule'
+  | 'map'
+  | 'technicians'
+  | 'services'
+  | 'availability';
 
-const statuses: BookingStatus[] = [
-  "Confirmed",
-  "On Site",
-  "In Progress",
-  "Completed",
-  "Cancelled",
-];
+const statuses: BookingStatus[] = ['Confirmed', 'On Site', 'In Progress', 'Completed', 'Cancelled'];
 
 const AdminPage: React.FC = () => {
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<UserRole[]>([]);
-  const [serviceCategories, setServiceCategories] = useState<
-    ServiceMasterCategory[]
-  >([]);
+  const [serviceCategories, setServiceCategories] = useState<ServiceMasterCategory[]>([]);
 
-  const [activeSection, setActiveSection] = useState<AdminSection>("kpi");
-  const [expandedBookingId, setExpandedBookingId] = useState<number | null>(
-    null
-  );
+  const [activeSection, setActiveSection] = useState<AdminSection>('kpi');
+  const [expandedBookingId, setExpandedBookingId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [technicianFilter, setTechnicianFilter] = useState("all");
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [technicianFilter, setTechnicianFilter] = useState('all');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const { addNotification } = useNotification();
@@ -94,18 +82,10 @@ const AdminPage: React.FC = () => {
   const ITEMS_PER_PAGE = 5;
 
   // availability
-  const [originalFullyBooked, setOriginalFullyBooked] = useState<Set<string>>(
-    new Set<string>()
-  );
-  const [originalBookedSlots, setOriginalBookedSlots] = useState<Set<string>>(
-    new Set<string>()
-  );
-  const [draftFullyBooked, setDraftFullyBooked] = useState<Set<string>>(
-    new Set<string>()
-  );
-  const [draftBookedSlots, setDraftBookedSlots] = useState<Set<string>>(
-    new Set<string>()
-  );
+  const [originalFullyBooked, setOriginalFullyBooked] = useState<Set<string>>(new Set<string>());
+  const [originalBookedSlots, setOriginalBookedSlots] = useState<Set<string>>(new Set<string>());
+  const [draftFullyBooked, setDraftFullyBooked] = useState<Set<string>>(new Set<string>());
+  const [draftBookedSlots, setDraftBookedSlots] = useState<Set<string>>(new Set<string>());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
@@ -130,9 +110,7 @@ const AdminPage: React.FC = () => {
   // technicians
   const [isTechnicianModalOpen, setIsTechnicianModalOpen] = useState(false);
   const [technicianToEdit, setTechnicianToEdit] = useState<User | null>(null);
-  const [technicianToDelete, setTechnicianToDelete] = useState<User | null>(
-    null
-  );
+  const [technicianToDelete, setTechnicianToDelete] = useState<User | null>(null);
 
   // add booking
   const [isAddBookingModalOpen, setIsAddBookingModalOpen] = useState(false);
@@ -141,7 +119,7 @@ const AdminPage: React.FC = () => {
   const [confirmationState, setConfirmationState] = useState<{
     isOpen: boolean;
     bookingId: number | null;
-    field: "status" | "technician" | null;
+    field: 'status' | 'technician' | null;
     value: string | null;
     title: string;
     message: string;
@@ -150,33 +128,21 @@ const AdminPage: React.FC = () => {
     bookingId: null,
     field: null,
     value: null,
-    title: "",
-    message: "",
+    title: '',
+    message: '',
   });
 
   // tech schedule
   const [scheduleDate, setScheduleDate] = useState<Date>(new Date());
-  const [techSchedules, setTechSchedules] = useState<ApiTechScheduleByUser[]>(
-    []
-  );
+  const [techSchedules, setTechSchedules] = useState<ApiTechScheduleByUser[]>([]);
   const [isLoadingTechSchedule, setIsLoadingTechSchedule] = useState(false);
-  const [techScheduleError, setTechScheduleError] = useState<string | null>(
-    null
-  );
+  const [techScheduleError, setTechScheduleError] = useState<string | null>(null);
 
   const ITEMS_PER_PAGE_BOOKING = ITEMS_PER_PAGE;
-  const [statusDraft, setStatusDraft] = useState<Record<number, BookingStatus>>(
-    {}
-  );
+  const [statusDraft, setStatusDraft] = useState<Record<number, BookingStatus>>({});
 
-  const availableTimes = useMemo(
-    () => generateTimeSlots(9, 17, 12, 13, 30),
-    []
-  );
-  const technicians = useMemo(
-    () => allUsers.filter((u) => u.role === "technician"),
-    [allUsers]
-  );
+  const availableTimes = useMemo(() => generateTimeSlots(9, 17, 12, 13, 30), []);
+  const technicians = useMemo(() => allUsers.filter((u) => u.role === 'technician'), [allUsers]);
 
   /* ------------------------------ LOAD DATA ------------------------------ */
 
@@ -186,10 +152,7 @@ const AdminPage: React.FC = () => {
       setBookings(bookingsFromApi);
       saveBookings(bookingsFromApi);
     } catch (err) {
-      console.error(
-        "Gagal memuat data booking dari server, fallback ke localStorage",
-        err
-      );
+      console.error('Gagal memuat data booking dari server, fallback ke localStorage', err);
       const localBookings = getBookings() as AdminBooking[];
       setBookings(localBookings);
     }
@@ -198,10 +161,7 @@ const AdminPage: React.FC = () => {
       const servicesFromApi = await fetchServicesFromApi();
       setServices(servicesFromApi);
     } catch (err) {
-      console.error(
-        "Gagal memuat data layanan dari server, fallback ke local config",
-        err
-      );
+      console.error('Gagal memuat data layanan dari server, fallback ke local config', err);
       setServices([]);
     }
 
@@ -209,7 +169,7 @@ const AdminPage: React.FC = () => {
       const usersFromApi = await fetchUsersFromApi();
       setAllUsers(usersFromApi);
     } catch (err) {
-      console.error("Gagal memuat data user dari server", err);
+      console.error('Gagal memuat data user dari server', err);
       setAllUsers([]);
     }
 
@@ -217,7 +177,7 @@ const AdminPage: React.FC = () => {
       const rolesFromApi = await fetchRolesFromApi();
       setRoles(rolesFromApi);
     } catch (err) {
-      console.error("Gagal memuat data role dari server", err);
+      console.error('Gagal memuat data role dari server', err);
       setRoles([]);
     }
 
@@ -225,7 +185,7 @@ const AdminPage: React.FC = () => {
       const categoriesFromApi = await fetchServiceCategoriesFromApi();
       setServiceCategories(categoriesFromApi);
     } catch (err) {
-      console.error("Gagal memuat master kategori layanan dari server", err);
+      console.error('Gagal memuat master kategori layanan dari server', err);
       setServiceCategories([]);
     }
   }, []);
@@ -238,9 +198,9 @@ const AdminPage: React.FC = () => {
       const data = await fetchTechScheduleFromApi(date);
       setTechSchedules(data);
     } catch (err: any) {
-      console.error("Error loadTechSchedule:", err);
+      console.error('Error loadTechSchedule:', err);
       setTechSchedules([]);
-      setTechScheduleError(err?.message || "Gagal memuat jadwal teknisi");
+      setTechScheduleError(err?.message || 'Gagal memuat jadwal teknisi');
     } finally {
       setIsLoadingTechSchedule(false);
     }
@@ -259,9 +219,9 @@ const AdminPage: React.FC = () => {
     setOriginalBookedSlots(bookedSlotsSet);
     setDraftBookedSlots(bookedSlotsSet);
 
-    window.addEventListener("focus", loadData);
+    window.addEventListener('focus', loadData);
     return () => {
-      window.removeEventListener("focus", loadData);
+      window.removeEventListener('focus', loadData);
     };
   }, [loadData]);
 
@@ -287,16 +247,11 @@ const AdminPage: React.FC = () => {
       JSON.stringify(Array.from(originalBookedSlots).sort()) !==
       JSON.stringify(Array.from(draftBookedSlots).sort());
     setHasUnsavedChanges(fullyBookedChanged || bookedSlotsChanged);
-  }, [
-    draftFullyBooked,
-    draftBookedSlots,
-    originalFullyBooked,
-    originalBookedSlots,
-  ]);
+  }, [draftFullyBooked, draftBookedSlots, originalFullyBooked, originalBookedSlots]);
 
   // load jadwal ketika buka tab schedule atau ganti tanggal
   useEffect(() => {
-    if (activeSection === "schedule" && scheduleDate) {
+    if (activeSection === 'schedule' && scheduleDate) {
       loadTechSchedule(scheduleDate);
     }
   }, [activeSection, scheduleDate, loadTechSchedule]);
@@ -307,32 +262,25 @@ const AdminPage: React.FC = () => {
     () =>
       bookings
         .filter((booking) => {
-          const keyword = (searchTerm || "").toLowerCase();
-          const bookingName = (booking?.name || "").toLowerCase();
+          const keyword = (searchTerm || '').toLowerCase();
+          const bookingName = (booking?.name || '').toLowerCase();
 
           const searchTermMatch = bookingName.includes(keyword);
-          const statusMatch =
-            statusFilter === "all" || booking.status === statusFilter;
+          const statusMatch = statusFilter === 'all' || booking.status === statusFilter;
           const technicianMatch =
-            technicianFilter === "all" ||
-            booking.technician === technicianFilter;
+            technicianFilter === 'all' || booking.technician === technicianFilter;
           return searchTermMatch && statusMatch && technicianMatch;
         })
         .sort((a, b) => b.id - a.id),
-    [bookings, searchTerm, statusFilter, technicianFilter]
+    [bookings, searchTerm, statusFilter, technicianFilter],
   );
 
   const paginatedBookings = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE_BOOKING;
-    return filteredBookings.slice(
-      startIndex,
-      startIndex + ITEMS_PER_PAGE_BOOKING
-    );
+    return filteredBookings.slice(startIndex, startIndex + ITEMS_PER_PAGE_BOOKING);
   }, [filteredBookings, currentPage]);
 
-  const totalPages = Math.ceil(
-    filteredBookings.length / ITEMS_PER_PAGE_BOOKING
-  );
+  const totalPages = Math.ceil(filteredBookings.length / ITEMS_PER_PAGE_BOOKING);
 
   const goToPage = (page: number) => {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
@@ -345,50 +293,39 @@ const AdminPage: React.FC = () => {
   const upcomingJobs = useMemo(
     () =>
       bookings
-        .filter((b) => b.status === "Confirmed" || b.status === "On Site")
-        .sort(
-          (a, b) =>
-            new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
-        ),
-    [bookings]
+        .filter((b) => b.status === 'Confirmed' || b.status === 'On Site')
+        .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()),
+    [bookings],
   );
 
   useEffect(() => {
-    if (
-      activeSection === "map" &&
-      upcomingJobs.length > 0 &&
-      !selectedLocation
-    ) {
+    if (activeSection === 'map' && upcomingJobs.length > 0 && !selectedLocation) {
       setSelectedLocation({
         lat: upcomingJobs[0].lat,
         lng: upcomingJobs[0].lng,
         title: upcomingJobs[0].name,
       });
-    } else if (activeSection !== "map") {
+    } else if (activeSection !== 'map') {
       setSelectedLocation(null);
     }
   }, [activeSection, upcomingJobs, selectedLocation]);
 
   /* -------------------- HANDLER BOOKING / STATUS / TECH ------------------- */
 
-  const handleBookingUpdate = (
-    id: number,
-    field: "technician",
-    value: string
-  ) => {
-    if (field === "technician") {
+  const handleBookingUpdate = (id: number, field: 'technician', value: string) => {
+    if (field === 'technician') {
       const originalBooking = bookings.find((b) => b.id === id);
 
       if (
         originalBooking &&
-        originalBooking.technician === "Belum Ditugaskan" &&
-        value !== "Belum Ditugaskan"
+        originalBooking.technician === 'Belum Ditugaskan' &&
+        value !== 'Belum Ditugaskan'
       ) {
-        const uiMessage = simulateNotification("technician_assigned", {
+        const uiMessage = simulateNotification('technician_assigned', {
           ...originalBooking,
           technician: value,
         });
-        addNotification(uiMessage, "info");
+        addNotification(uiMessage, 'info');
       }
 
       const techUser = allUsers.find((u) => u.name === value);
@@ -397,10 +334,9 @@ const AdminPage: React.FC = () => {
           ? {
               ...b,
               technician: value,
-              technicianUserId:
-                value === "Belum Ditugaskan" ? null : techUser?.id ?? null,
+              technicianUserId: value === 'Belum Ditugaskan' ? null : techUser?.id ?? null,
             }
-          : b
+          : b,
       );
       setBookings(updatedBookings);
       saveBookings(updatedBookings);
@@ -414,28 +350,25 @@ const AdminPage: React.FC = () => {
     const newStatus = statusDraft[id] ?? bookingToUpdate.status;
 
     if (newStatus === bookingToUpdate.status) {
-      addNotification(
-        "Status belum berubah, tidak ada yang perlu diupdate.",
-        "info"
-      );
+      addNotification('Status belum berubah, tidak ada yang perlu diupdate.', 'info');
       return;
     }
 
-    let title = "Ubah Status Booking?";
+    let title = 'Ubah Status Booking?';
     let message = `Apakah Anda yakin ingin mengubah status pesanan untuk ${bookingToUpdate.name} dari "${bookingToUpdate.status}" menjadi "${newStatus}"?`;
 
-    if (newStatus === "Completed") {
-      title = "Selesaikan Pesanan?";
+    if (newStatus === 'Completed') {
+      title = 'Selesaikan Pesanan?';
       message = `Apakah Anda yakin ingin menyelesaikan pesanan untuk ${bookingToUpdate.name}?`;
-    } else if (newStatus === "Cancelled") {
-      title = "Batalkan Pesanan?";
+    } else if (newStatus === 'Cancelled') {
+      title = 'Batalkan Pesanan?';
       message = `Apakah Anda yakin ingin membatalkan pesanan untuk ${bookingToUpdate.name}? Tindakan ini tidak dapat diurungkan.`;
     }
 
     setConfirmationState({
       isOpen: true,
       bookingId: id,
-      field: "status",
+      field: 'status',
       value: newStatus,
       title,
       message,
@@ -448,8 +381,8 @@ const AdminPage: React.FC = () => {
       bookingId: null,
       field: null,
       value: null,
-      title: "",
-      message: "",
+      title: '',
+      message: '',
     });
   };
 
@@ -460,7 +393,7 @@ const AdminPage: React.FC = () => {
       return;
     }
 
-    if (field === "status") {
+    if (field === 'status') {
       const booking = bookings.find((b) => b.id === bookingId);
       if (!booking) {
         closeConfirmationModal();
@@ -472,15 +405,13 @@ const AdminPage: React.FC = () => {
       try {
         if (booking.formId) {
           const techUserIdFromBooking = booking.technicianUserId ?? null;
-          const techUserFromList = allUsers.find(
-            (u) => u.name === booking.technician
-          );
+          const techUserFromList = allUsers.find((u) => u.name === booking.technician);
           const userId = techUserIdFromBooking ?? techUserFromList?.id;
 
           if (!userId) {
             addNotification(
-              "Tidak ditemukan user_id untuk teknisi ini. Pastikan teknisi sudah dipilih di daftar user.",
-              "error"
+              'Tidak ditemukan user_id untuk teknisi ini. Pastikan teknisi sudah dipilih di daftar user.',
+              'error',
             );
             closeConfirmationModal();
             return;
@@ -490,7 +421,7 @@ const AdminPage: React.FC = () => {
         }
 
         const updatedBookings = bookings.map((b) =>
-          b.id === bookingId ? { ...b, status: nextStatus } : b
+          b.id === bookingId ? { ...b, status: nextStatus } : b,
         );
         setBookings(updatedBookings);
         saveBookings(updatedBookings);
@@ -502,13 +433,13 @@ const AdminPage: React.FC = () => {
 
         addNotification(
           `Status booking untuk ${booking.name} berhasil diubah menjadi "${nextStatus}".`,
-          "success"
+          'success',
         );
       } catch (err) {
         console.error(err);
         addNotification(
-          "Gagal mengubah status di server. Silakan cek koneksi atau mapping status & coba lagi.",
-          "error"
+          'Gagal mengubah status di server. Silakan cek koneksi atau mapping status & coba lagi.',
+          'error',
         );
       } finally {
         closeConfirmationModal();
@@ -601,9 +532,7 @@ const AdminPage: React.FC = () => {
           newServices = newServices.filter((s) => s.id !== serviceToEdit.id);
         }
 
-        const existingIndex = newServices.findIndex(
-          (s) => s.id === finalService.id
-        );
+        const existingIndex = newServices.findIndex((s) => s.id === finalService.id);
 
         if (existingIndex > -1) {
           newServices[existingIndex] = finalService;
@@ -621,8 +550,8 @@ const AdminPage: React.FC = () => {
           const idFromService = serviceToEdit?.id;
           if (!idFromService) {
             addNotification(
-              "ID layanan tidak ditemukan. Pastikan API /admin/service-list mengirim field id dan disimpan di Service.",
-              "error"
+              'ID layanan tidak ditemukan. Pastikan API /admin/service-list mengirim field id dan disimpan di Service.',
+              'error',
             );
             return;
           }
@@ -634,7 +563,7 @@ const AdminPage: React.FC = () => {
           const newIdFromApi = await createServiceOnServer(
             updatedServiceBase,
             updatedServiceBase.category,
-            serviceCategories
+            serviceCategories,
           );
 
           const fallbackId =
@@ -654,16 +583,14 @@ const AdminPage: React.FC = () => {
 
         setIsServiceModalOpen(false);
         addNotification(
-          `Layanan "${serviceData.name}" berhasil ${
-            isEdit ? "diperbarui" : "disimpan ke server"
-          }.`,
-          "success"
+          `Layanan "${serviceData.name}" berhasil ${isEdit ? 'diperbarui' : 'disimpan ke server'}.`,
+          'success',
         );
       } catch (error) {
-        console.error("Error saat menyimpan layanan ke server:", error);
+        console.error('Error saat menyimpan layanan ke server:', error);
         addNotification(
-          "Gagal menyimpan layanan ke server. Silakan cek koneksi atau coba lagi.",
-          "error"
+          'Gagal menyimpan layanan ke server. Silakan cek koneksi atau coba lagi.',
+          'error',
         );
       }
     })();
@@ -678,12 +605,12 @@ const AdminPage: React.FC = () => {
       await deleteServiceOnServer(serviceId);
       setServices((prev) => prev.filter((s) => s.id !== serviceId));
       setServiceToDelete(null);
-      addNotification(`Layanan "${serviceName}" telah dihapus.`, "success");
+      addNotification(`Layanan "${serviceName}" telah dihapus.`, 'success');
     } catch (error) {
-      console.error("Gagal menghapus layanan:", error);
+      console.error('Gagal menghapus layanan:', error);
       addNotification(
         `Gagal menghapus layanan "${serviceName}" di server. Silakan coba lagi.`,
-        "error"
+        'error',
       );
     }
   };
@@ -703,10 +630,7 @@ const AdminPage: React.FC = () => {
   const handleSaveTechnician = async (technicianData: any) => {
     const selectedRole = roles.find((r) => r.name === technicianData.role);
     if (!selectedRole) {
-      addNotification(
-        "Role user tidak valid. Silakan refresh halaman.",
-        "error"
-      );
+      addNotification('Role user tidak valid. Silakan refresh halaman.', 'error');
       return;
     }
 
@@ -716,34 +640,28 @@ const AdminPage: React.FC = () => {
           ? {
               ...u,
               ...technicianData,
-              password: technicianData.password || u.password,
+              password: technicianData.password || (u as any).password,
             }
-          : u
+          : u,
       );
       setAllUsers(updatedUsers);
       setIsTechnicianModalOpen(false);
-      addNotification(
-        `User "${technicianData.name}" berhasil diperbarui.`,
-        "success"
-      );
+      addNotification(`User "${technicianData.name}" berhasil diperbarui.`, 'success');
     } else {
       try {
-        const res = await fetch(
-          "http://localhost:4222/api/v1/admin/user-management-store",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-            body: JSON.stringify({
-              fullname: technicianData.name,
-              username: technicianData.username,
-              password: technicianData.password,
-              role_id: selectedRole.id,
-            }),
-          }
-        );
+        const res = await fetch('http://localhost:4222/api/v1/admin/user-management-store', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            fullname: technicianData.name,
+            username: technicianData.username,
+            password: technicianData.password,
+            role_id: selectedRole.id,
+          }),
+        });
 
         if (!res.ok) {
           throw new Error(`Gagal menyimpan user: ${res.status}`);
@@ -753,10 +671,8 @@ const AdminPage: React.FC = () => {
 
         const newIdFromApi =
           (json?.data && json.data.id) ||
-          json.id ||
-          (allUsers.length > 0
-            ? Math.max(...allUsers.map((u) => u.id)) + 1
-            : 1);
+          (json as any).id ||
+          (allUsers.length > 0 ? Math.max(...allUsers.map((u) => u.id)) + 1 : 1);
 
         const newUser: User = {
           id: newIdFromApi,
@@ -764,33 +680,47 @@ const AdminPage: React.FC = () => {
           username: technicianData.username,
           role: technicianData.role || selectedRole.name,
           created_at: json?.data?.created_at,
-        };
+        } as any;
 
         setAllUsers((prev) => [...prev, newUser]);
         setIsTechnicianModalOpen(false);
-        addNotification(
-          `User "${newUser.name}" berhasil disimpan ke server.`,
-          "success"
-        );
+        addNotification(`User "${newUser.name}" berhasil disimpan ke server.`, 'success');
       } catch (error) {
-        console.error("Error saat menyimpan user baru:", error);
+        console.error('Error saat menyimpan user baru:', error);
         addNotification(
-          "Gagal menyimpan user ke server. Silakan cek koneksi atau coba lagi.",
-          "error"
+          'Gagal menyimpan user ke server. Silakan cek koneksi atau coba lagi.',
+          'error',
         );
       }
     }
   };
 
-  const handleDeleteTechnician = () => {
+  // ✅ UPDATED: delete user -> hit server
+  const handleDeleteTechnician = async () => {
     if (!technicianToDelete) return;
-    const updatedUsers = allUsers.filter((u) => u.id !== technicianToDelete.id);
-    setAllUsers(updatedUsers);
-    setTechnicianToDelete(null);
-    addNotification(
-      `User "${technicianToDelete.name}" telah dihapus.`,
-      "success"
-    );
+
+    // optional guard: jangan hapus diri sendiri (kalau ada id di currentUser)
+    const currentId = (currentUser as any)?.id;
+    if (currentId && technicianToDelete.id === currentId) {
+      addNotification('Tidak bisa menghapus akun yang sedang login.', 'error');
+      setTechnicianToDelete(null);
+      return;
+    }
+
+    try {
+      await deleteUserOnServer(technicianToDelete.id);
+
+      setAllUsers((prev) => prev.filter((u) => u.id !== technicianToDelete.id));
+      addNotification(`User "${technicianToDelete.name}" telah dihapus.`, 'success');
+    } catch (error: any) {
+      console.error('Gagal menghapus user:', error);
+      addNotification(
+        error?.message || 'Gagal menghapus user di server. Silakan coba lagi.',
+        'error',
+      );
+    } finally {
+      setTechnicianToDelete(null);
+    }
   };
 
   /* --------------------------- HANDLER NEW BOOKING -------------------------- */
@@ -798,34 +728,28 @@ const AdminPage: React.FC = () => {
   const handleSaveNewBooking = async (payload: StoreBookingPayload) => {
     try {
       // map status "Confirmed" / "On Site" dst -> kode angka untuk backend
-      const statusKey = (payload.status as BookingStatus) || "Confirmed";
+      const statusKey = (payload.status as BookingStatus) || 'Confirmed';
       const statusCode =
-        BOOKING_STATUS_TO_API_CODE[statusKey] ||
-        BOOKING_STATUS_TO_API_CODE["Confirmed"];
+        BOOKING_STATUS_TO_API_CODE[statusKey] || BOOKING_STATUS_TO_API_CODE['Confirmed'];
 
       const apiPayload: StoreBookingPayload = {
         ...payload,
         status: statusCode,
       };
 
-      const res = await storeBookingOnServer(apiPayload);
+      await storeBookingOnServer(apiPayload);
 
-      addNotification(
-        `Booking baru untuk ${payload.fullname} berhasil disimpan.`,
-        "success"
-      );
+      addNotification(`Booking baru untuk ${payload.fullname} berhasil disimpan.`, 'success');
 
       // reload booking dari server supaya form_id/apply_id ke-sync
       await loadData();
 
       setIsAddBookingModalOpen(false);
     } catch (error: any) {
-      console.error("Error saat menyimpan booking:", error);
+      console.error('Error saat menyimpan booking:', error);
       addNotification(
-        `Gagal menyimpan booking: ${
-          error?.message || JSON.stringify(error) || "Unknown error"
-        }`,
-        "error"
+        `Gagal menyimpan booking: ${error?.message || JSON.stringify(error) || 'Unknown error'}`,
+        'error',
       );
     }
   };
@@ -840,10 +764,7 @@ const AdminPage: React.FC = () => {
       techKpis[tech.name] = { completed: 0, totalMinutes: 0 };
     });
     bookings.forEach((booking) => {
-      if (
-        booking.technician !== "Belum Ditugaskan" &&
-        booking.status === "Completed"
-      ) {
+      if (booking.technician !== 'Belum Ditugaskan' && booking.status === 'Completed') {
         if (!techKpis[booking.technician]) {
           techKpis[booking.technician] = {
             completed: 0,
@@ -851,19 +772,16 @@ const AdminPage: React.FC = () => {
           };
         }
         techKpis[booking.technician].completed += 1;
-        techKpis[booking.technician].totalMinutes +=
-          booking.workDurationMinutes || 0;
+        techKpis[booking.technician].totalMinutes += booking.workDurationMinutes || 0;
       }
     });
-    const technicianPerformance = Object.entries(techKpis).map(
-      ([name, data]) => ({
-        name,
-        ...data,
-      })
-    );
+    const technicianPerformance = Object.entries(techKpis).map(([name, data]) => ({
+      name,
+      ...data,
+    }));
 
     const serviceCounts = bookings.reduce((acc, booking) => {
-      if (booking.status === "Completed") {
+      if (booking.status === 'Completed') {
         acc[booking.service] = (acc[booking.service] || 0) + 1;
       }
       return acc;
@@ -878,12 +796,10 @@ const AdminPage: React.FC = () => {
       acc[booking.status] = (acc[booking.status] || 0) + 1;
       return acc;
     }, {} as Record<BookingStatus, number>);
-    const statusDistribution = Object.entries(statusCounts).map(
-      ([label, value]) => ({
-        label,
-        value,
-      })
-    );
+    const statusDistribution = Object.entries(statusCounts).map(([label, value]) => ({
+      label,
+      value,
+    }));
 
     return { technicianPerformance, popularServices, statusDistribution };
   }, [bookings, technicians]);
@@ -918,7 +834,7 @@ const AdminPage: React.FC = () => {
           endTime: null,
           workDurationMinutes: 60,
           additionalCosts: 0,
-          note: "",
+          note: '',
           photos: {
             arrival: undefined,
             before: undefined,
@@ -936,8 +852,8 @@ const AdminPage: React.FC = () => {
       return techSchedules.map((t) => ({
         id: t.user_id,
         name: t.fullname,
-        username: "",
-        role: "technician",
+        username: '',
+        role: 'technician',
       }));
     }
     return technicians;
@@ -951,20 +867,20 @@ const AdminPage: React.FC = () => {
   }, [serviceCategories, services]);
 
   const sectionTitles: Record<AdminSection, string> = {
-    kpi: "Dashboard KPI",
-    bookings: "Daftar Booking",
-    schedule: "Jadwal Teknisi",
-    map: "Peta Lokasi Tugas",
-    technicians: "Manajemen Tim/User",
-    services: "Manajemen Layanan",
-    availability: "Atur Ketersediaan Jadwal",
+    kpi: 'Dashboard KPI',
+    bookings: 'Daftar Booking',
+    schedule: 'Jadwal Teknisi',
+    map: 'Peta Lokasi Tugas',
+    technicians: 'Manajemen Tim/User',
+    services: 'Manajemen Layanan',
+    availability: 'Atur Ketersediaan Jadwal',
   };
 
   /* ---------------------------- RENDER SECTION ---------------------------- */
 
   const renderSection = () => {
     switch (activeSection) {
-      case "bookings":
+      case 'bookings':
         return (
           <AdminBookingsSection
             paginatedBookings={paginatedBookings}
@@ -988,7 +904,7 @@ const AdminPage: React.FC = () => {
           />
         );
 
-      case "schedule":
+      case 'schedule':
         return (
           <ScheduleSection
             scheduleDate={scheduleDate}
@@ -1000,7 +916,7 @@ const AdminPage: React.FC = () => {
           />
         );
 
-      case "map":
+      case 'map':
         return (
           <MapSection
             upcomingJobs={upcomingJobs}
@@ -1009,7 +925,7 @@ const AdminPage: React.FC = () => {
           />
         );
 
-      case "technicians":
+      case 'technicians':
         return (
           <TechniciansSection
             users={allUsers}
@@ -1019,7 +935,7 @@ const AdminPage: React.FC = () => {
           />
         );
 
-      case "services":
+      case 'services':
         return (
           <ServicesSection
             services={services}
@@ -1029,7 +945,7 @@ const AdminPage: React.FC = () => {
           />
         );
 
-      case "availability":
+      case 'availability':
         return (
           <AvailabilitySection
             availableTimes={availableTimes}
@@ -1046,7 +962,7 @@ const AdminPage: React.FC = () => {
           />
         );
 
-      case "kpi":
+      case 'kpi':
         return <KpiSection kpiData={kpiData} />;
 
       default:
@@ -1081,7 +997,7 @@ const AdminPage: React.FC = () => {
               <h1 className="text-3xl font-bold font-poppins text-gray-800 dark:text-white">
                 {sectionTitles[activeSection]}
               </h1>
-              {activeSection === "bookings" && (
+              {activeSection === 'bookings' && (
                 <button
                   onClick={() => setIsAddBookingModalOpen(true)}
                   className="inline-flex items-center gap-2 bg-primary text-white font-bold px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors"
@@ -1143,9 +1059,9 @@ const AdminPage: React.FC = () => {
         title={confirmationState.title}
         confirmText="Ya, Lanjutkan"
         confirmButtonClass={
-          confirmationState.value === "Cancelled"
-            ? "bg-red-600 hover:bg-red-700 focus:ring-red-500"
-            : "bg-primary hover:bg-primary-dark focus:ring-primary"
+          confirmationState.value === 'Cancelled'
+            ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
+            : 'bg-primary hover:bg-primary-dark focus:ring-primary'
         }
       >
         <p>{confirmationState.message}</p>
@@ -1162,9 +1078,9 @@ const AdminPage: React.FC = () => {
           confirmButtonClass="bg-red-600 hover:bg-red-700 focus:ring-red-500"
         >
           <p>
-            Apakah Anda yakin ingin menghapus layanan{" "}
-            <span className="font-bold">"{serviceToDelete.serviceName}"</span>?
-            Tindakan ini tidak dapat diurungkan.
+            Apakah Anda yakin ingin menghapus layanan{' '}
+            <span className="font-bold">"{serviceToDelete.serviceName}"</span>? Tindakan ini tidak
+            dapat diurungkan.
           </p>
         </GenericConfirmationModal>
       )}
@@ -1180,9 +1096,9 @@ const AdminPage: React.FC = () => {
           confirmButtonClass="bg-red-600 hover:bg-red-700 focus:ring-red-500"
         >
           <p>
-            Apakah Anda yakin ingin menghapus user{" "}
-            <span className="font-bold">"{technicianToDelete.name}"</span>?
-            Tindakan ini tidak dapat diurungkan.
+            Apakah Anda yakin ingin menghapus user{' '}
+            <span className="font-bold">"{technicianToDelete.name}"</span>? Tindakan ini tidak dapat
+            diurungkan.
           </p>
         </GenericConfirmationModal>
       )}
