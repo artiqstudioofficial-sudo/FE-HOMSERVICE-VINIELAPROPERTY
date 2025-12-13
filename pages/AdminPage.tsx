@@ -649,19 +649,22 @@ const AdminPage: React.FC = () => {
       addNotification(`User "${technicianData.name}" berhasil diperbarui.`, 'success');
     } else {
       try {
-        const res = await fetch('http://localhost:4222/api/v1/admin/user-management-store', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+        const res = await fetch(
+          'https://api-homeservice.viniela.id/api/v1/admin/user-management-store',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+              fullname: technicianData.name,
+              username: technicianData.username,
+              password: technicianData.password,
+              role_id: selectedRole.id,
+            }),
           },
-          credentials: 'include',
-          body: JSON.stringify({
-            fullname: technicianData.name,
-            username: technicianData.username,
-            password: technicianData.password,
-            role_id: selectedRole.id,
-          }),
-        });
+        );
 
         if (!res.ok) {
           throw new Error(`Gagal menyimpan user: ${res.status}`);

@@ -471,7 +471,7 @@ const ContactFormSection: React.FC = () => {
         schedule_time: formData.time,
       };
 
-      const res = await fetch('http://localhost:4222/api/v1/user/store-booking', {
+      const res = await fetch('https://api-homeservice.viniela.id/api/v1/user/store-booking', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
