@@ -10,19 +10,25 @@ export { formatDateForApi } from './client';
 /*                               ADMIN ENDPOINTS                              */
 /* -------------------------------------------------------------------------- */
 
+const ADMIN_PREFIX = '/api/v1/admin';
+
 export const ADMIN_ENDPOINTS = {
-  users: '/admin/user-management-list',
-  userDelete: '/admin/user-management-delete',
-  roles: '/admin/user-role-list',
-  serviceCategories: '/admin/service-category-list',
-  bookings: '/admin/user-booking-list',
-  services: '/admin/service-list',
-  updateBookingStatus: '/admin/update-booking-status',
-  techSchedule: '/admin/tech-schedule',
-  serviceCreate: '/admin/service-store',
-  serviceUpdate: '/admin/service-update',
-  serviceDelete: '/admin/service-delete',
-  storeBooking: '/admin/store-booking',
+  users: `${ADMIN_PREFIX}/user-management-list`,
+  userDelete: `${ADMIN_PREFIX}/user-management-delete`,
+  roles: `${ADMIN_PREFIX}/user-role-list`,
+  serviceCategories: `${ADMIN_PREFIX}/service-category-list`,
+  bookings: `${ADMIN_PREFIX}/user-booking-list`,
+  services: `${ADMIN_PREFIX}/service-list`,
+  updateBookingStatus: `${ADMIN_PREFIX}/update-booking-status`,
+  techSchedule: `${ADMIN_PREFIX}/tech-schedule`,
+  serviceCreate: `${ADMIN_PREFIX}/service-store`,
+  serviceUpdate: `${ADMIN_PREFIX}/service-update`,
+  serviceDelete: `${ADMIN_PREFIX}/service-delete`,
+  storeBooking: `${ADMIN_PREFIX}/store-booking`,
+
+  // ✅ AVAILABILITY (BARU)
+  availabilityGet: `${ADMIN_PREFIX}/availability`,
+  availabilityUpdate: `${ADMIN_PREFIX}/availability-update`,
 } as const;
 
 /* -------------------------------------------------------------------------- */
@@ -156,7 +162,7 @@ const API_STATUS_TO_BOOKING: Record<string, BookingStatus> = {
 };
 
 export const mapApiStatusToBookingStatus = (status: string): BookingStatus =>
-  API_STATUS_TO_BOOKING[status.toUpperCase()] ?? 'Confirmed';
+  API_STATUS_TO_BOOKING[(status || '').toUpperCase()] ?? 'Confirmed';
 
 export const BOOKING_STATUS_TO_API_CODE: Record<BookingStatus, string> = {
   Confirmed: '1',
@@ -233,9 +239,7 @@ export async function fetchRolesFromApi(): Promise<UserRole[]> {
 }
 
 export async function deleteUserOnServer(userId: number): Promise<void> {
-  var payload = {
-    id: userId,
-  };
+  const payload = { id: userId };
 
   await apiRequest(ADMIN_ENDPOINTS.userDelete, {
     method: 'DELETE',
@@ -262,8 +266,10 @@ export async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
     const scheduleDate = row.schedule_date;
     const status = mapApiStatusToBookingStatus(row.status);
 
+    const stableId = Number(row.form_id);
+
     return {
-      id: row.apply_id,
+      id: stableId,
       formId: row.form_id,
       applyId: row.apply_id,
 
@@ -282,10 +288,12 @@ export async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
 
       lat: Number(row.lat),
       lng: Number(row.lng),
+
       arrivalTime: null,
       startTime: null,
       endTime: null,
       workDurationMinutes: 0,
+
       additionalCosts: row.additional_cost ? Number(row.additional_cost) || 0 : 0,
       note: row.note || '',
       photos: {
@@ -318,7 +326,7 @@ export async function fetchServicesFromApi(): Promise<Service[]> {
   });
 }
 
-// ------------------------ Update Booking Status ------------------------ //
+/* ------------------------ Update Booking Status ------------------------ */
 
 export async function updateBookingStatusOnServer(
   formId: number,
@@ -336,14 +344,16 @@ export async function updateBookingStatusOnServer(
     user_id: userId,
   };
 
-  await apiRequest(ADMIN_ENDPOINTS.updateBookingStatus, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  console.log(payload);
+
+  // await apiRequest(ADMIN_ENDPOINTS.updateBookingStatus, {
+  //   method: 'PUT',
+  //   headers: { 'Content-Type': 'application/json' },
+  //   body: JSON.stringify(payload),
+  // });
 }
 
-// --------------------------- Tech Schedule ---------------------------- //
+/* --------------------------- Tech Schedule ---------------------------- */
 
 export async function fetchTechScheduleFromApi(date: Date): Promise<ApiTechScheduleByUser[]> {
   const dateStr = formatDateForApi(date);
@@ -365,7 +375,7 @@ export async function fetchTechScheduleFromApi(date: Date): Promise<ApiTechSched
   );
 }
 
-// -------------------------- Store Booking API -------------------------- //
+/* -------------------------- Store Booking API -------------------------- */
 
 export async function storeBookingOnServer(
   payload: StoreBookingPayload,
@@ -383,7 +393,7 @@ export async function storeBookingOnServer(
   };
 }
 
-// --------------------- Create & Update Service API --------------------- //
+/* --------------------- Create & Update Service API --------------------- */
 
 export async function createServiceOnServer(
   serviceData: Service,
@@ -444,7 +454,7 @@ export async function updateServiceOnServer(id: number, serviceData: Service): P
   });
 }
 
-// ---------------------------- Delete Service --------------------------- //
+/* ---------------------------- Delete Service --------------------------- */
 
 export async function deleteServiceOnServer(id: number): Promise<void> {
   const payload = { id: String(id) };
@@ -453,5 +463,54 @@ export async function deleteServiceOnServer(id: number): Promise<void> {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/*                               AVAILABILITY API                             */
+/* -------------------------------------------------------------------------- */
+
+export type Availability = {
+  fullyBookedDates: string[]; // ["YYYY-MM-DD", ...]
+  bookedSlots: string[]; // ["YYYY-MM-DD-HH:mm", ...]
+};
+
+// bentuk data yang umum dari backend
+type ApiAvailabilityResponse = {
+  error?: boolean;
+  message?: string;
+  data?: {
+    fully_booked_dates?: string[] | null;
+    booked_slots?: string[] | null;
+  };
+  // fallback kalau backend langsung return object
+  fully_booked_dates?: string[] | null;
+  booked_slots?: string[] | null;
+};
+
+function normalizeAvailability(res: ApiAvailabilityResponse): Availability {
+  const src = (res?.data ?? res) as any;
+
+  return {
+    fullyBookedDates: Array.isArray(src?.fully_booked_dates) ? src.fully_booked_dates : [],
+    bookedSlots: Array.isArray(src?.booked_slots) ? src.booked_slots : [],
+  };
+}
+
+export async function fetchAvailabilityFromApi(): Promise<Availability> {
+  const res: any = await apiRequest(ADMIN_ENDPOINTS.availabilityGet, { method: 'GET' });
+  return normalizeAvailability(res as ApiAvailabilityResponse);
+}
+
+export async function saveAvailabilityOnServer(payload: Availability): Promise<void> {
+  const body = {
+    fully_booked_dates: payload.fullyBookedDates,
+    booked_slots: payload.bookedSlots,
+  };
+
+  await apiRequest(ADMIN_ENDPOINTS.availabilityUpdate, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
 }

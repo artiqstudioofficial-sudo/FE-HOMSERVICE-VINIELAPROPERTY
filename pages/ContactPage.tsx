@@ -125,6 +125,7 @@ const ProgressIndicator: React.FC<{ currentStep: number }> = ({ currentStep }) =
 const ContactFormSection: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
   // masih pakai nama di query, nanti dipetakan ke id setelah services ke-load
   const initialServiceParam = searchParams.get('service') || '';
 
@@ -134,7 +135,7 @@ const ContactFormSection: React.FC = () => {
     name: '',
     whatsapp: '',
     address: '',
-    // sekarang ini akan menyimpan **ID service** dalam bentuk string
+    // sekarang ini menyimpan ID service (string)
     service: '',
     startDate: null as Date | null,
     endDate: null as Date | null,
@@ -157,21 +158,25 @@ const ContactFormSection: React.FC = () => {
       startDate?: string;
     }
   >({});
+
   const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { addNotification } = useNotification();
 
+  // AVAILABILITY (API)
   const [fullyBookedDates, setFullyBookedDates] = useState<Set<string>>(new Set());
   const [bookedSlots, setBookedSlots] = useState<Set<string>>(new Set());
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [availabilityLoading, setAvailabilityLoading] = useState<boolean>(false);
 
   // Layanan dari API
   const [allServicesData, setAllServicesData] = useState<ServiceCategoryGroup[]>([]);
   const [serviceError, setServiceError] = useState<string | null>(null);
   const [serviceLoading, setServiceLoading] = useState<boolean>(false);
 
-  // ---------------------------------------------------------------------------
-  // Load services from API
-  // ---------------------------------------------------------------------------
+  /* -------------------------------------------------------------------------- */
+  /*                           LOAD SERVICES FROM API                           */
+  /* -------------------------------------------------------------------------- */
   useEffect(() => {
     const loadServices = async () => {
       try {
@@ -183,33 +188,24 @@ const ContactFormSection: React.FC = () => {
         const byCategory: Record<string, Service[]> = {};
         servicesFromApi.forEach((service) => {
           const categoryName = service.category || 'Lainnya';
-          if (!byCategory[categoryName]) {
-            byCategory[categoryName] = [];
-          }
+          if (!byCategory[categoryName]) byCategory[categoryName] = [];
           byCategory[categoryName].push(service);
         });
 
         const categories: ServiceCategoryGroup[] = Object.entries(byCategory).map(
-          ([category, services]) => ({
-            category,
-            services,
-          }),
+          ([category, services]) => ({ category, services }),
         );
 
         setAllServicesData(categories);
 
         // jika ada param ?service= (nama layanan), petakan ke ID
         if (initialServiceParam) {
-          const allSvcs = servicesFromApi;
-          const matchByName = allSvcs.find(
+          const matchByName = servicesFromApi.find(
             (s) => s.name.toLowerCase() === initialServiceParam.toLowerCase().trim(),
           );
 
           if (matchByName) {
-            setFormData((prev) => ({
-              ...prev,
-              service: String(matchByName.id),
-            }));
+            setFormData((prev) => ({ ...prev, service: String(matchByName.id) }));
           }
         }
       } catch (err: any) {
@@ -231,20 +227,52 @@ const ContactFormSection: React.FC = () => {
     [allServicesData],
   );
 
-  // sekarang pilih service berdasarkan ID (formData.service)
+  // pilih service berdasarkan ID
   const selectedServiceDetails = useMemo(() => {
     const id = Number(formData.service);
     if (!id) return undefined;
     return allServices.find((s) => Number(s.id) === id);
   }, [formData.service, allServices]);
 
-  const durationDays = selectedServiceDetails?.durationDays || 1;
+  // fallback (kalau Service belum punya durationDays)
+  const durationDays = (selectedServiceDetails as any)?.durationDays || 1;
 
-  // availability dari local storage
+  /* -------------------------------------------------------------------------- */
+  /*                           LOAD AVAILABILITY (API)                          */
+  /* -------------------------------------------------------------------------- */
   useEffect(() => {
-    const { fullyBookedDates: fullyBooked, bookedSlots: slots } = getAvailability();
-    setFullyBookedDates(new Set(fullyBooked));
-    setBookedSlots(new Set(slots || []));
+    let mounted = true;
+
+    (async () => {
+      try {
+        setAvailabilityLoading(true);
+        setAvailabilityError(null);
+
+        const availability = await getAvailability();
+
+        if (!mounted) return;
+
+        const fully = Array.isArray(availability.fullyBookedDates)
+          ? availability.fullyBookedDates
+          : [];
+        const slots = Array.isArray(availability.bookedSlots) ? availability.bookedSlots : [];
+
+        setFullyBookedDates(new Set(fully));
+        setBookedSlots(new Set(slots));
+      } catch (err: any) {
+        console.error('Gagal load availability:', err);
+        if (!mounted) return;
+        setAvailabilityError(err?.message || 'Gagal memuat availability');
+        setFullyBookedDates(new Set());
+        setBookedSlots(new Set());
+      } finally {
+        if (mounted) setAvailabilityLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const availableTimes = useMemo(() => generateTimeSlots(9, 17, 12, 13, 30), []);
@@ -254,6 +282,7 @@ const ContactFormSection: React.FC = () => {
     const newEndDate = new Date(date);
     newEndDate.setDate(newEndDate.getDate() + durationDays - 1);
 
+    // cek range full booked
     for (let d = new Date(date); d <= newEndDate; d.setDate(d.getDate() + 1)) {
       if (fullyBookedDates.has(formatDateToKey(d))) {
         setScheduleError(
@@ -267,7 +296,7 @@ const ContactFormSection: React.FC = () => {
       }
     }
 
-    setFormData({ ...formData, startDate: date, endDate: newEndDate, time: '' });
+    setFormData((prev) => ({ ...prev, startDate: date, endDate: newEndDate, time: '' }));
   };
 
   const handleChange = (
@@ -275,7 +304,7 @@ const ContactFormSection: React.FC = () => {
   ) => {
     const { name, value } = e.target;
     setErrors((prev) => ({ ...prev, [name]: undefined }));
-    setFormData({ ...formData, [name]: value });
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleUseCurrentLocation = () => {
@@ -285,31 +314,32 @@ const ContactFormSection: React.FC = () => {
     setShowLocationHint(true);
     setErrors((prev) => ({ ...prev, location: undefined }));
 
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          setLocation({ lat: latitude, lng: longitude });
-          setLocationMessage('Lokasi GPS berhasil ditemukan.');
-          setIsFetchingLocation(false);
-          setShowLocationHint(false);
-        },
-        (error) => {
-          let message = 'Gagal mendapatkan lokasi. Pastikan izin lokasi diaktifkan.';
-          if (error.code === error.PERMISSION_DENIED) {
-            message = 'Anda menolak izin lokasi. Mohon izinkan akses untuk melanjutkan.';
-          }
-          setLocationError(message);
-          setIsFetchingLocation(false);
-          setShowLocationHint(false);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-      );
-    } else {
+    if (!navigator.geolocation) {
       setLocationError('Geolocation tidak didukung oleh browser ini.');
       setIsFetchingLocation(false);
       setShowLocationHint(false);
+      return;
     }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setLocation({ lat: latitude, lng: longitude });
+        setLocationMessage('Lokasi GPS berhasil ditemukan.');
+        setIsFetchingLocation(false);
+        setShowLocationHint(false);
+      },
+      (error) => {
+        let message = 'Gagal mendapatkan lokasi. Pastikan izin lokasi diaktifkan.';
+        if (error.code === error.PERMISSION_DENIED) {
+          message = 'Anda menolak izin lokasi. Mohon izinkan akses untuk melanjutkan.';
+        }
+        setLocationError(message);
+        setIsFetchingLocation(false);
+        setShowLocationHint(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+    );
   };
 
   const handleSearchAddress = async () => {
@@ -322,7 +352,9 @@ const ContactFormSection: React.FC = () => {
     setLocationMessage('');
     setErrors((prev) => ({ ...prev, location: undefined }));
 
-    const apiKey = process.env.API_KEY;
+    // NOTE: kamu pakai env custom. Pastikan ini ada.
+    const apiKey =
+      (process as any)?.env?.API_KEY || (import.meta as any)?.env?.VITE_GOOGLE_MAPS_KEY;
     if (!apiKey) {
       console.error('Geocoding API Key is missing.');
       setLocationMessage('Fitur pencarian alamat saat ini tidak tersedia.');
@@ -383,9 +415,7 @@ const ContactFormSection: React.FC = () => {
   };
 
   const validateStep1 = (): boolean => {
-    const newErrors: Partial<Record<keyof typeof formData, string>> & {
-      location?: string;
-    } = {};
+    const newErrors: Partial<Record<keyof typeof formData, string>> & { location?: string } = {};
     const nameError = validateField('name', formData.name);
     if (nameError) newErrors.name = nameError;
 
@@ -422,9 +452,7 @@ const ContactFormSection: React.FC = () => {
     if (step === 2) isValid = validateStep2();
     if (step === 3) isValid = validateStep3();
 
-    if (isValid) {
-      setStep((prev) => prev + 1);
-    }
+    if (isValid) setStep((prev) => prev + 1);
   };
 
   const handlePrev = () => {
@@ -432,9 +460,9 @@ const ContactFormSection: React.FC = () => {
     setStep((prev) => prev - 1);
   };
 
-  // ---------------------------------------------------------------------------
-  // SUBMIT → PAKAI API /user/store-booking (service = ID, integer)
-  // ---------------------------------------------------------------------------
+  /* -------------------------------------------------------------------------- */
+  /*                     SUBMIT → API /api/v1/user/store-booking                */
+  /* -------------------------------------------------------------------------- */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -457,25 +485,29 @@ const ContactFormSection: React.FC = () => {
       return;
     }
 
+    // guard sederhana: kalau availability masih loading, jangan submit
+    if (availabilityLoading) {
+      addNotification('Sedang memuat slot jadwal. Coba lagi sebentar.', 'info');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const payload = {
         fullname: formData.name,
         whatsapp: formData.whatsapp,
-        service: serviceId, // <== INT, bukan nama
+        service: serviceId,
         address: formData.address,
         lat: location.lat,
         lng: location.lng,
-        schedule_date: formatDateForApi(formData.startDate), // YYYY-MM-DD
+        schedule_date: formatDateForApi(formData.startDate),
         schedule_time: formData.time,
       };
 
       const res = await fetch('https://api-homeservice.viniela.id/api/v1/user/store-booking', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(payload),
       });
@@ -484,7 +516,7 @@ const ContactFormSection: React.FC = () => {
       try {
         resJson = await res.json();
       } catch {
-        // kalau response bukan JSON, biarkan null
+        // ignore
       }
 
       if (!res.ok) {
@@ -494,17 +526,15 @@ const ContactFormSection: React.FC = () => {
 
       const serviceNameForDisplay = selectedServiceDetails?.name || initialServiceParam || '';
 
-      // Untuk keperluan notifikasi UI & summary, bikin objek Booking lokal saja
+      // booking lokal untuk notifikasi UI
       const newBooking: Booking = {
-        id: Date.now(), // dummy id di sisi client
+        id: Date.now(),
         name: formData.name,
         whatsapp: formData.whatsapp,
         address: formData.address,
         service: serviceNameForDisplay || String(serviceId),
         startDate: formData.startDate.toISOString(),
-        endDate: formData.endDate
-          ? formData.endDate.toISOString()
-          : formData.startDate.toISOString(),
+        endDate: (formData.endDate ?? formData.startDate).toISOString(),
         time: formData.time,
         status: 'Confirmed',
         technician: 'Belum Ditugaskan',
@@ -512,14 +542,24 @@ const ContactFormSection: React.FC = () => {
         lng: location.lng,
       };
 
-      // Update availability lokal (front-end only)
-      const currentAvailability = getAvailability();
-      const newBookedSlots = [
-        ...(currentAvailability.bookedSlots || []),
-        `${formatDateToKey(formData.startDate)}-${formData.time}`,
-      ];
-      let newFullyBookedDates = [...currentAvailability.fullyBookedDates];
+      /* ---------------------- UPDATE AVAILABILITY (API) ---------------------- */
 
+      // ambil latest dari server (source of truth)
+      const currentAvailability = await getAvailability();
+
+      const currentBookedSlots = Array.isArray(currentAvailability.bookedSlots)
+        ? currentAvailability.bookedSlots
+        : [];
+      const currentFully = Array.isArray(currentAvailability.fullyBookedDates)
+        ? currentAvailability.fullyBookedDates
+        : [];
+
+      const slotKey = `${formatDateToKey(formData.startDate)}-${formData.time}`;
+
+      const newBookedSlots = Array.from(new Set([...currentBookedSlots, slotKey]));
+      let newFullyBookedDates = [...currentFully];
+
+      // kalau durasi > 1 hari → block rentang
       if (durationDays > 1 && formData.endDate) {
         const datesToBlock = new Set(newFullyBookedDates);
         for (
@@ -532,10 +572,13 @@ const ContactFormSection: React.FC = () => {
         newFullyBookedDates = Array.from(datesToBlock);
       }
 
-      saveAvailability({
+      // simpan ke server
+      await saveAvailability({
         fullyBookedDates: newFullyBookedDates,
         bookedSlots: newBookedSlots,
       });
+
+      // update state UI
       setFullyBookedDates(new Set(newFullyBookedDates));
       setBookedSlots(new Set(newBookedSlots));
 
@@ -603,16 +646,22 @@ const ContactFormSection: React.FC = () => {
             <h2 className="text-2xl md:text-3xl font-bold font-poppins text-gray-800 dark:text-white mb-6 text-center">
               Formulir Pemesanan Layanan
             </h2>
+
             <ProgressIndicator currentStep={step} />
 
-            {/* Info error layanan (jika API gagal) */}
+            {/* Info error layanan */}
             {serviceError && (
               <div className="mb-4 text-center text-sm text-red-500">{serviceError}</div>
             )}
 
+            {/* Info error availability */}
+            {availabilityError && (
+              <div className="mb-4 text-center text-sm text-red-500">{availabilityError}</div>
+            )}
+
             <form onSubmit={handleSubmit} noValidate>
               <div className="min-h-[420px] py-4">
-                {/* STEP 1: INFO KONTAK + LOKASI */}
+                {/* STEP 1 */}
                 {step === 1 && (
                   <div className="space-y-6 animate-fade-in">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -635,6 +684,7 @@ const ContactFormSection: React.FC = () => {
                         />
                         {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
                       </div>
+
                       <div>
                         <label
                           htmlFor="whatsapp"
@@ -687,7 +737,7 @@ const ContactFormSection: React.FC = () => {
                         Penanda Lokasi (Wajib)
                       </label>
 
-                      {/* Opsi GPS */}
+                      {/* GPS */}
                       <div className="p-4 border dark:border-slate-700 rounded-lg">
                         <h4 className="font-semibold text-gray-800 dark:text-white">
                           Opsi 1: Gunakan Lokasi GPS
@@ -695,13 +745,14 @@ const ContactFormSection: React.FC = () => {
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                           Paling akurat jika Anda memesan dari lokasi pengerjaan.
                         </p>
+
                         <button
                           type="button"
                           onClick={handleUseCurrentLocation}
                           disabled={isFetchingLocation || isGeocoding}
                           className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-slate-800 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 disabled:opacity-50"
                         >
-                          {isFetchingLocation && (
+                          {isFetchingLocation ? (
                             <svg
                               className="animate-spin h-5 w-5"
                               xmlns="http://www.w3.org/2000/svg"
@@ -722,18 +773,22 @@ const ContactFormSection: React.FC = () => {
                                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                               ></path>
                             </svg>
+                          ) : (
+                            <Navigation size={16} />
                           )}
-                          {!isFetchingLocation && <Navigation size={16} />}
+
                           <span>
                             {isFetchingLocation ? 'Mencari GPS...' : 'Gunakan Lokasi Saat Ini'}
                           </span>
                         </button>
+
                         {showLocationHint && (
                           <p className="text-blue-600 dark:text-blue-400 text-xs mt-2 flex items-center gap-1.5">
                             <Info size={14} />
                             Mohon izinkan akses lokasi pada prompt browser Anda.
                           </p>
                         )}
+
                         {locationError && (
                           <p className="text-red-500 text-xs mt-2">{locationError}</p>
                         )}
@@ -748,7 +803,7 @@ const ContactFormSection: React.FC = () => {
                         <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
                       </div>
 
-                      {/* Opsi cari alamat manual */}
+                      {/* Search address */}
                       <div className="p-4 border dark:border-slate-700 rounded-lg">
                         <h4 className="font-semibold text-gray-800 dark:text-white">
                           Opsi 2: Cari Alamat Manual
@@ -756,6 +811,7 @@ const ContactFormSection: React.FC = () => {
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                           Gunakan jika memesan untuk lokasi lain (misal: rumah orang tua).
                         </p>
+
                         <div className="flex items-center gap-2 mt-1">
                           <input
                             type="text"
@@ -803,6 +859,7 @@ const ContactFormSection: React.FC = () => {
                       {errors.location && !locationError && !locationMessage && (
                         <p className="text-red-500 text-xs mt-2">{errors.location}</p>
                       )}
+
                       {locationMessage && (
                         <p
                           className={`text-xs mt-2 ${
@@ -831,7 +888,7 @@ const ContactFormSection: React.FC = () => {
                   </div>
                 )}
 
-                {/* STEP 2: LAYANAN */}
+                {/* STEP 2 */}
                 {step === 2 && (
                   <div className="space-y-6 animate-fade-in">
                     <div>
@@ -841,6 +898,7 @@ const ContactFormSection: React.FC = () => {
                       >
                         Pilih Layanan
                       </label>
+
                       <select
                         name="service"
                         id="service"
@@ -853,6 +911,7 @@ const ContactFormSection: React.FC = () => {
                         <option value="" disabled>
                           -- Pilih salah satu --
                         </option>
+
                         {allServicesData.map((category) => (
                           <optgroup key={category.category} label={category.category}>
                             {category.services.map((service) => (
@@ -863,9 +922,11 @@ const ContactFormSection: React.FC = () => {
                           </optgroup>
                         ))}
                       </select>
+
                       {errors.service && (
                         <p className="text-red-500 text-xs mt-1">{errors.service}</p>
                       )}
+
                       {selectedServiceDetails && (
                         <div className="mt-4 p-3 bg-primary-light dark:bg-slate-700/50 rounded-lg text-sm text-primary-dark dark:text-teal-300">
                           Estimasi durasi pengerjaan: <strong>{durationDays} hari</strong>. Kalender
@@ -876,18 +937,20 @@ const ContactFormSection: React.FC = () => {
                   </div>
                 )}
 
-                {/* STEP 3: JADWAL */}
+                {/* STEP 3 */}
                 {step === 3 && (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Pilih Tanggal Mulai
                       </label>
+
                       <Calendar
                         selectedDate={formData.startDate}
                         onDateSelect={handleDateSelect}
                         fullyBookedDates={fullyBookedDates}
                       />
+
                       {errors.startDate && (
                         <p className="text-red-500 text-xs mt-1">{errors.startDate}</p>
                       )}
@@ -900,6 +963,7 @@ const ContactFormSection: React.FC = () => {
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Pilih Waktu Mulai
                       </label>
+
                       {!formData.startDate ? (
                         <div className="text-center p-8 bg-gray-50 dark:bg-slate-700/50 rounded-lg h-full flex items-center justify-center">
                           <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -914,15 +978,17 @@ const ContactFormSection: React.FC = () => {
                             </p>
                             <p>{scheduleString}</p>
                           </div>
+
                           <div className="grid grid-cols-2 gap-2">
                             {availableTimes.map((time) => {
                               const slotKey = `${formatDateToKey(formData.startDate!)}-${time}`;
                               const isBooked = bookedSlots.has(slotKey);
+
                               return (
                                 <button
                                   type="button"
                                   key={time}
-                                  onClick={() => setFormData({ ...formData, time })}
+                                  onClick={() => setFormData((prev) => ({ ...prev, time }))}
                                   disabled={isBooked}
                                   className={`p-2 rounded-md text-sm font-semibold border-2 transition-colors ${
                                     formData.time === time
@@ -941,17 +1007,19 @@ const ContactFormSection: React.FC = () => {
                           </div>
                         </>
                       )}
+
                       {errors.time && <p className="text-red-500 text-xs mt-1">{errors.time}</p>}
                     </div>
                   </div>
                 )}
 
-                {/* STEP 4: KONFIRMASI */}
+                {/* STEP 4 */}
                 {step === 4 && (
                   <div className="space-y-6 animate-fade-in">
                     <h3 className="text-xl font-bold text-gray-800 dark:text-white">
                       Konfirmasi Pesanan Anda
                     </h3>
+
                     <div className="bg-light-bg dark:bg-slate-700/50 p-4 rounded-lg space-y-4">
                       <div className="flex justify-between items-start">
                         <div>

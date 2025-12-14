@@ -1,31 +1,33 @@
-import {
-  initialBookedSlots,
-  initialFullyBookedDates,
-} from "../config/availability";
+import { initialBookedSlots, initialFullyBookedDates } from '../config/availability';
 
-const BOOKINGS_STORAGE_KEY = "vinielaBookings";
-const AVAILABILITY_STORAGE_KEY = "vinielaAvailability";
-const PHOTO_STORAGE_PREFIX = "vinielaPhoto-";
-const USERS_STORAGE_KEY = "vinielaUsers";
+/**
+ * STORAGE FINAL (API)
+ * - bookings      : API
+ * - users         : API
+ * - availability  : API
+ * - photos        : API upload + url saved to DB (forms.*_photo)
+ */
 
-export type BookingStatus =
-  | "Confirmed"
-  | "On Site"
-  | "In Progress"
-  | "Completed"
-  | "Cancelled";
+const API_BASE_URL =
+  (import.meta as any)?.env?.VITE_API_BASE_URL ||
+  (process as any)?.env?.NEXT_PUBLIC_API_BASE_URL ||
+  'https://api-homeservice.viniela.id';
+
+const ADMIN_API = `${API_BASE_URL}/api/v1/admin`;
+
+export type BookingStatus = 'Confirmed' | 'On Site' | 'In Progress' | 'Completed' | 'Cancelled';
 
 export interface Booking {
-  id: number;
-  name: string;
-  whatsapp: string;
+  id: number; // apply_id (kalau ada) atau form_id
+  name: string; // customer_name
+  whatsapp: string; // customer_wa
   address: string;
-  service: string;
-  startDate: string;
-  endDate: string;
-  time: string;
+  service: string; // service name (dari query kamu)
+  startDate: string; // ISO (dari schedule_date)
+  endDate: string; // ISO (sama)
+  time: string; // schedule_time
   status: BookingStatus;
-  technician: string;
+  technician: string; // technician_name atau "Belum Ditugaskan"
   lat: number;
   lng: number;
   arrivalTime?: string | null;
@@ -33,7 +35,7 @@ export interface Booking {
   endTime?: string | null;
   workDurationMinutes?: number | null;
   photos?: {
-    arrival?: string;
+    arrival?: string; // url/path dari backend
     before?: string;
     after?: string;
   };
@@ -43,10 +45,9 @@ export interface Booking {
 
 export interface User {
   id: number;
-  name: string;
+  name: string; // fullname
   username: string;
-  password?: string;
-  role: "admin" | "technician";
+  role: 'admin' | 'technician' | string;
 }
 
 interface Availability {
@@ -54,163 +55,44 @@ interface Availability {
   bookedSlots?: string[];
 }
 
-export const savePhoto = (key: string, data: string): void => {
-  try {
-    localStorage.setItem(`${PHOTO_STORAGE_PREFIX}${key}`, data);
-  } catch (error) {
-    console.error(
-      `Failed to save photo with key ${key} to localStorage`,
-      error
-    );
+/* -------------------------------------------------------------------------- */
+/*                                   FETCH                                    */
+/* -------------------------------------------------------------------------- */
+
+async function apiFetch<T>(url: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(url, {
+    ...init,
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init.headers || {}),
+    },
+  });
+
+  const json = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    const msg = json?.message || json?.error || `Request gagal (status ${res.status})`;
+    throw new Error(msg);
   }
-};
 
-export const getPhoto = (key: string): string | null => {
-  try {
-    return localStorage.getItem(`${PHOTO_STORAGE_PREFIX}${key}`);
-  } catch (error) {
-    console.error(
-      `Failed to retrieve photo with key ${key} from localStorage`,
-      error
-    );
-    return null;
-  }
-};
+  // backend misc.response -> { error, message, data }
+  return (json?.data ?? json) as T;
+}
 
-const generateInitialBookings = (): Booking[] => {
-  const today = new Date();
-  const yesterday = new Date(new Date().setDate(today.getDate() - 1));
-  const twoDaysAgo = new Date(new Date().setDate(today.getDate() - 2));
-  const tomorrow = new Date(new Date().setDate(today.getDate() + 1));
-  const dayAfterTomorrow = new Date(new Date().setDate(today.getDate() + 2));
-  const threeDaysFromNow = new Date(new Date().setDate(today.getDate() + 3));
+/* -------------------------------------------------------------------------- */
+/*                                   HELPERS                                  */
+/* -------------------------------------------------------------------------- */
 
-  const bookings: Booking[] = [
-    {
-      id: 1,
-      name: "Joni",
-      whatsapp: "089888820021",
-      address: "Puri Indah, Jakarta Barat",
-      service: "Perbaikan AC",
-      startDate: twoDaysAgo.toISOString(),
-      endDate: twoDaysAgo.toISOString(),
-      time: "09:30",
-      status: "Completed",
-      technician: "Ahmad Yusuf",
-      lat: -6.179326,
-      lng: 106.751686,
-      arrivalTime: new Date(
-        new Date(twoDaysAgo).setHours(9, 25, 33)
-      ).toISOString(),
-      startTime: new Date(
-        new Date(twoDaysAgo).setHours(9, 40, 15)
-      ).toISOString(),
-      endTime: new Date(
-        new Date(twoDaysAgo).setHours(10, 55, 48)
-      ).toISOString(),
-      workDurationMinutes: 75,
-      photos: {
-        arrival: "1-arrival",
-        before: "1-before",
-        after: "1-after",
-      },
-      note: "Filter AC sangat kotor, perlu diganti pada service berikutnya. Pipa pembuangan juga dibersihkan dari lumut.",
-      additionalCosts: 50000,
-    },
-    {
-      id: 2,
-      name: "Budi Santoso",
-      whatsapp: "081234567890",
-      address: "Jl. Merdeka No. 17, Jakarta Pusat",
-      service: "Servis Saluran Mampet",
-      startDate: yesterday.toISOString(),
-      endDate: yesterday.toISOString(),
-      time: "14:00",
-      status: "On Site",
-      technician: "Bambang Wijoyo",
-      lat: -6.17511,
-      lng: 106.827225,
-      arrivalTime: new Date(
-        new Date(yesterday).setHours(14, 5, 0)
-      ).toISOString(),
-      photos: {
-        arrival: "2-arrival",
-      },
-    },
-    {
-      id: 3,
-      name: "Citra Lestari",
-      whatsapp: "087712345678",
-      address: "Apartemen Cendana Tower B Lt. 15, Jakarta Pusat",
-      service: "General Cleaning",
-      startDate: today.toISOString(),
-      endDate: today.toISOString(),
-      time: "11:00",
-      status: "Confirmed",
-      technician: "Tim Kebersihan A",
-      lat: -6.18,
-      lng: 106.822502,
-    },
-    {
-      id: 4,
-      name: "Dewi Anggraini",
-      whatsapp: "085611112222",
-      address: "Jl. Gatot Subroto Kav. 38, Jakarta Selatan",
-      service: "Cuci AC Rutin",
-      startDate: tomorrow.toISOString(),
-      endDate: tomorrow.toISOString(),
-      time: "10:00",
-      status: "Confirmed",
-      technician: "Ahmad Yusuf",
-      lat: -6.229728,
-      lng: 106.822395,
-    },
-    {
-      id: 5,
-      name: "Eko Prasetyo",
-      whatsapp: "081199998888",
-      address: "Perumahan Cipinang Indah, Jakarta Timur",
-      service: "Instalasi Pipa Air",
-      startDate: dayAfterTomorrow.toISOString(),
-      endDate: threeDaysFromNow.toISOString(),
-      time: "09:00",
-      status: "Confirmed",
-      technician: "Bambang Wijoyo",
-      lat: -6.234394,
-      lng: 106.903336,
-    },
-  ];
-
-  savePhoto(
-    "1-arrival",
-    "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=100&h=100&fit=crop"
-  );
-  savePhoto(
-    "1-before",
-    "https://images.unsplash.com/photo-1603013822817-1bb13ce59a74?w=100&h=100&fit=crop"
-  );
-  savePhoto(
-    "1-after",
-    "https://images.unsplash.com/photo-1598870150334-26ecf6311634?w=100&h=100&fit=crop"
-  );
-  savePhoto(
-    "2-arrival",
-    "https://images.unsplash.com/photo-1581822261290-991b38693d1b?w=100&h=100&fit=crop"
-  );
-
-  return bookings;
-};
-
-// --- Helpers ---
 export const formatDateToKey = (date: Date): string => {
   const year = date.getFullYear();
-  const month = (date.getMonth() + 1).toString().padStart(2, "0");
-  const day = date.getDate().toString().padStart(2, "0");
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
 
 export const parseKeyToDate = (key: string): Date => {
-  const [year, month, day] = key.split("-").map(Number);
+  const [year, month, day] = key.split('-').map(Number);
   return new Date(year, month - 1, day);
 };
 
@@ -219,27 +101,25 @@ export const generateTimeSlots = (
   endHour: number,
   breakStartHour: number,
   breakEndHour: number,
-  intervalMinutes: number
+  intervalMinutes: number,
 ): string[] => {
   const slots: string[] = [];
   const date = new Date();
   date.setHours(startHour, 0, 0, 0);
+
   const endDate = new Date();
   endDate.setHours(endHour, 0, 0, 0);
+
   const breakStartDate = new Date();
   breakStartDate.setHours(breakStartHour, 0, 0, 0);
+
   const breakEndDate = new Date();
   breakEndDate.setHours(breakEndHour, 0, 0, 0);
 
   while (date < endDate) {
     if (date < breakStartDate || date >= breakEndDate) {
       slots.push(
-        date
-          .toLocaleTimeString("id-ID", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-          .replace(".", ":")
+        date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':'),
       );
     }
     date.setMinutes(date.getMinutes() + intervalMinutes);
@@ -247,132 +127,206 @@ export const generateTimeSlots = (
   return slots;
 };
 
-// --- Bookings ---
-export const getBookings = (): Booking[] => {
-  try {
-    const storedBookings = localStorage.getItem(BOOKINGS_STORAGE_KEY);
-    if (storedBookings) {
-      const parsedBookings: Booking[] = JSON.parse(storedBookings);
-      const bookingsWithDefaults = parsedBookings.map((b) => ({
-        ...b,
-        endDate: b.endDate || b.startDate,
-        photos: b.photos || {},
-        additionalWorkNotes: b.note || "",
-        additionalCosts: b.additionalCosts || 0,
-      }));
-      bookingsWithDefaults.sort(
-        (a, b) =>
-          new Date(a.startDate).getTime() - new Date(b.startDate).getTime() ||
-          a.id - b.id
-      );
-      return bookingsWithDefaults;
-    } else {
-      const initialData = generateInitialBookings();
-      saveBookings(initialData);
-      return initialData;
-    }
-  } catch (error) {
-    console.error("Failed to load bookings from localStorage", error);
-  }
-  return [];
+/* -------------------------------------------------------------------------- */
+/*                                   BOOKINGS                                 */
+/* -------------------------------------------------------------------------- */
+
+type ApiBookingRow = {
+  apply_id: number | null;
+  form_id: number;
+
+  technician_name: string | null;
+
+  customer_name: string;
+  customer_wa: string;
+  address: string;
+  service: string;
+
+  schedule_date: string; // YYYY-MM-DD
+  schedule_time: string; // HH:mm
+  status: string; // form_statuses.name
+
+  note?: string | null;
+  additional_cost?: number | string | null;
+
+  arrive_photo?: string | null;
+  before_photo?: string | null;
+  after_photo?: string | null;
+
+  lat?: number | string | null;
+  lng?: number | string | null;
 };
 
-export const saveBookings = (bookings: Booking[]): void => {
-  try {
-    localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(bookings));
-  } catch (error) {
-    console.error("Failed to save bookings to localStorage", error);
-    alert("Gagal menyimpan data booking. Penyimpanan mungkin penuh.");
-  }
+function mapApiStatusToBookingStatus(apiStatus: string): BookingStatus {
+  const s = (apiStatus || '').toLowerCase();
+  if (s.includes('confirm')) return 'Confirmed';
+  if (s.includes('on site') || s.includes('onsite') || s.includes('arrive')) return 'On Site';
+  if (s.includes('progress')) return 'In Progress';
+  if (s.includes('complete') || s.includes('done') || s.includes('selesai')) return 'Completed';
+  if (s.includes('cancel') || s.includes('batal')) return 'Cancelled';
+  return 'Confirmed';
+}
+
+export const getBookings = async (): Promise<Booking[]> => {
+  const rows = await apiFetch<ApiBookingRow[]>(`${ADMIN_API}/user-booking-list`);
+
+  const mapped = (rows || []).map((r) => {
+    const isoDate = new Date(r.schedule_date).toISOString();
+
+    const latNum = r.lat == null ? 0 : Number(r.lat);
+    const lngNum = r.lng == null ? 0 : Number(r.lng);
+
+    return {
+      id: Number(r.apply_id ?? r.form_id),
+      name: r.customer_name,
+      whatsapp: r.customer_wa,
+      address: r.address,
+      service: r.service,
+      startDate: isoDate,
+      endDate: isoDate,
+      time: r.schedule_time,
+      status: mapApiStatusToBookingStatus(r.status),
+      technician: r.technician_name || 'Belum Ditugaskan',
+      lat: Number.isFinite(latNum) ? latNum : 0,
+      lng: Number.isFinite(lngNum) ? lngNum : 0,
+      note: r.note || '',
+      additionalCosts: r.additional_cost == null ? 0 : Number(r.additional_cost) || 0,
+      photos: {
+        arrival: r.arrive_photo || undefined,
+        before: r.before_photo || undefined,
+        after: r.after_photo || undefined,
+      },
+      arrivalTime: null,
+      startTime: null,
+      endTime: null,
+      workDurationMinutes: null,
+    } as Booking;
+  });
+
+  // terbaru dulu
+  mapped.sort(
+    (a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime() || b.id - a.id,
+  );
+
+  return mapped;
 };
 
-// --- Availability ---
-export const getAvailability = (): Availability => {
-  try {
-    const storedAvailability = localStorage.getItem(AVAILABILITY_STORAGE_KEY);
-    if (storedAvailability) {
-      return JSON.parse(storedAvailability);
-    }
-  } catch (error) {
-    console.error("Failed to load availability from localStorage", error);
-  }
-  return {
-    fullyBookedDates: Array.from(initialFullyBookedDates),
-    bookedSlots: Array.from(initialBookedSlots),
-  };
+/* -------------------------------------------------------------------------- */
+/*                                AVAILABILITY                                */
+/* -------------------------------------------------------------------------- */
+
+type ApiAvailability = {
+  fullyBookedDates: string[];
+  bookedSlots: string[];
+  updatedAt?: string | null;
 };
 
-export const saveAvailability = (availability: Partial<Availability>): void => {
+export const getAvailability = async (): Promise<Availability> => {
   try {
-    const currentAvailability = getAvailability();
-    const newAvailability = { ...currentAvailability, ...availability };
-    localStorage.setItem(
-      AVAILABILITY_STORAGE_KEY,
-      JSON.stringify(newAvailability)
-    );
-  } catch (error) {
-    console.error("Failed to save availability to localStorage", error);
-  }
-};
-
-// --- Users (Admin & Technicians) ---
-const initialUsers: User[] = [
-  {
-    id: 0,
-    name: "Admin",
-    username: "admin",
-    password: "admin123",
-    role: "admin",
-  },
-  {
-    id: 1,
-    name: "Ahmad Yusuf",
-    username: "ahmad",
-    password: "password123",
-    role: "technician",
-  },
-  {
-    id: 2,
-    name: "Bambang Wijoyo",
-    username: "bambang",
-    password: "password123",
-    role: "technician",
-  },
-  {
-    id: 3,
-    name: "Tim Kebersihan A",
-    username: "tim_a",
-    password: "password123",
-    role: "technician",
-  },
-  {
-    id: 4,
-    name: "Tim Laundry B",
-    username: "tim_b",
-    password: "password123",
-    role: "technician",
-  },
-];
-
-export const getUsers = (): User[] => {
-  try {
-    const stored = localStorage.getItem(USERS_STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    } else {
-      saveUsers(initialUsers);
-      return initialUsers;
-    }
-  } catch (error) {
-    console.error("Failed to load users from localStorage", error);
-    return initialUsers;
+    const data = await apiFetch<ApiAvailability>(`${ADMIN_API}/availability`);
+    return {
+      fullyBookedDates: Array.isArray(data.fullyBookedDates) ? data.fullyBookedDates : [],
+      bookedSlots: Array.isArray(data.bookedSlots) ? data.bookedSlots : [],
+    };
+  } catch (e) {
+    console.warn('Availability API fallback ke config default:', e);
+    return {
+      fullyBookedDates: Array.from(initialFullyBookedDates),
+      bookedSlots: Array.from(initialBookedSlots),
+    };
   }
 };
 
-export const saveUsers = (users: User[]): void => {
-  try {
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-  } catch (error) {
-    console.error("Failed to save users to localStorage", error);
-  }
+export const saveAvailability = async (availability: Partial<Availability>): Promise<void> => {
+  await apiFetch(`${ADMIN_API}/availability`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      fullyBookedDates: availability.fullyBookedDates ?? [],
+      bookedSlots: availability.bookedSlots ?? [],
+    }),
+  });
 };
+
+/* -------------------------------------------------------------------------- */
+/*                                   USERS                                    */
+/* -------------------------------------------------------------------------- */
+
+type ApiUserRow = {
+  id: number;
+  fullname: string;
+  username: string;
+  role: string;
+  created_at?: string;
+};
+
+export const getUsers = async (): Promise<User[]> => {
+  const rows = await apiFetch<ApiUserRow[]>(`${ADMIN_API}/user-management-list`);
+  return (rows || []).map((u) => ({
+    id: u.id,
+    name: u.fullname,
+    username: u.username,
+    role: (u.role || '').toLowerCase(),
+  }));
+};
+
+/* -------------------------------------------------------------------------- */
+/*                                   PHOTOS                                   */
+/* -------------------------------------------------------------------------- */
+
+export type PhotoType = 'arrival' | 'before' | 'after';
+
+export async function uploadBookingPhoto(
+  formId: number,
+  type: PhotoType,
+  file: File,
+): Promise<{ form_id: number; type: PhotoType; url: string }> {
+  const fd = new FormData();
+  fd.append('form_id', String(formId));
+  fd.append('type', type);
+  fd.append('file', file);
+
+  const res = await fetch(`${ADMIN_API}/booking-photo-upload`, {
+    method: 'POST',
+    credentials: 'include',
+    body: fd,
+  });
+
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = json?.message || json?.error || `Upload gagal (status ${res.status})`;
+    throw new Error(msg);
+  }
+
+  const data = json?.data ?? json;
+  return data;
+}
+
+export async function getBookingPhotos(formId: number): Promise<{
+  arrival: string | null;
+  before: string | null;
+  after: string | null;
+}> {
+  const res = await fetch(`${ADMIN_API}/booking-photo?form_id=${formId}`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = json?.message || json?.error || `Fetch photo gagal (status ${res.status})`;
+    throw new Error(msg);
+  }
+
+  const data = json?.data ?? json;
+  return data?.photos || { arrival: null, before: null, after: null };
+}
+
+/**
+ * helper untuk bikin URL absolute kalau backend hanya simpan path "/uploads/..."
+ * - contoh: resolveAssetUrl("/uploads/forms/1/arrival.jpg")
+ */
+export function resolveAssetUrl(pathOrUrl?: string | null): string | null {
+  if (!pathOrUrl) return null;
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  return `${API_BASE_URL}${pathOrUrl}`;
+}

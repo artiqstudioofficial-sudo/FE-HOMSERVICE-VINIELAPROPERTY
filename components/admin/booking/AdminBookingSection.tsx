@@ -40,8 +40,6 @@ const AdminBookingsSection: React.FC<Props> = ({
   setTechnicianFilter,
   technicians,
   statuses,
-  expandedBookingId,
-  setExpandedBookingId,
   statusDraft,
   setStatusDraft,
   onStatusSubmit,
@@ -80,7 +78,7 @@ const AdminBookingsSection: React.FC<Props> = ({
             <option value="all">Semua Teknisi</option>
             <option value="Belum Ditugaskan">Belum Ditugaskan</option>
             {technicians.map((t) => (
-              <option key={t.name} value={t.name}>
+              <option key={t.id} value={t.id}>
                 {t.name}
               </option>
             ))}
@@ -120,7 +118,7 @@ const AdminBookingsSection: React.FC<Props> = ({
                   >
                     <option value="Belum Ditugaskan">Belum Ditugaskan</option>
                     {technicians.map((t) => (
-                      <option key={t.name} value={t.name}>
+                      <option key={t.id} value={t.id}>
                         {t.name}
                       </option>
                     ))}
