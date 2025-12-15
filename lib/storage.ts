@@ -1,4 +1,7 @@
-import { initialBookedSlots, initialFullyBookedDates } from '../config/availability';
+import {
+  initialBookedSlots,
+  initialFullyBookedDates,
+} from "../config/availability";
 
 /**
  * STORAGE FINAL (API)
@@ -8,14 +11,16 @@ import { initialBookedSlots, initialFullyBookedDates } from '../config/availabil
  * - photos        : API upload + url saved to DB (forms.*_photo)
  */
 
-const API_BASE_URL =
-  (import.meta as any)?.env?.VITE_API_BASE_URL ||
-  (process as any)?.env?.NEXT_PUBLIC_API_BASE_URL ||
-  'https://api-homeservice.viniela.id';
+const API_BASE_URL = "https://api-homeservice.viniela.id";
 
 const ADMIN_API = `${API_BASE_URL}/api/v1/admin`;
 
-export type BookingStatus = 'Confirmed' | 'On Site' | 'In Progress' | 'Completed' | 'Cancelled';
+export type BookingStatus =
+  | "Confirmed"
+  | "On Site"
+  | "In Progress"
+  | "Completed"
+  | "Cancelled";
 
 export interface Booking {
   id: number; // apply_id (kalau ada) atau form_id
@@ -47,7 +52,7 @@ export interface User {
   id: number;
   name: string; // fullname
   username: string;
-  role: 'admin' | 'technician' | string;
+  role: "admin" | "technician" | string;
 }
 
 interface Availability {
@@ -62,9 +67,9 @@ interface Availability {
 async function apiFetch<T>(url: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(url, {
     ...init,
-    credentials: 'include',
+    credentials: "include",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...(init.headers || {}),
     },
   });
@@ -72,7 +77,8 @@ async function apiFetch<T>(url: string, init: RequestInit = {}): Promise<T> {
   const json = await res.json().catch(() => null);
 
   if (!res.ok) {
-    const msg = json?.message || json?.error || `Request gagal (status ${res.status})`;
+    const msg =
+      json?.message || json?.error || `Request gagal (status ${res.status})`;
     throw new Error(msg);
   }
 
@@ -86,13 +92,13 @@ async function apiFetch<T>(url: string, init: RequestInit = {}): Promise<T> {
 
 export const formatDateToKey = (date: Date): string => {
   const year = date.getFullYear();
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
 
 export const parseKeyToDate = (key: string): Date => {
-  const [year, month, day] = key.split('-').map(Number);
+  const [year, month, day] = key.split("-").map(Number);
   return new Date(year, month - 1, day);
 };
 
@@ -101,7 +107,7 @@ export const generateTimeSlots = (
   endHour: number,
   breakStartHour: number,
   breakEndHour: number,
-  intervalMinutes: number,
+  intervalMinutes: number
 ): string[] => {
   const slots: string[] = [];
   const date = new Date();
@@ -119,7 +125,9 @@ export const generateTimeSlots = (
   while (date < endDate) {
     if (date < breakStartDate || date >= breakEndDate) {
       slots.push(
-        date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':'),
+        date
+          .toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+          .replace(".", ":")
       );
     }
     date.setMinutes(date.getMinutes() + intervalMinutes);
@@ -158,17 +166,21 @@ type ApiBookingRow = {
 };
 
 function mapApiStatusToBookingStatus(apiStatus: string): BookingStatus {
-  const s = (apiStatus || '').toLowerCase();
-  if (s.includes('confirm')) return 'Confirmed';
-  if (s.includes('on site') || s.includes('onsite') || s.includes('arrive')) return 'On Site';
-  if (s.includes('progress')) return 'In Progress';
-  if (s.includes('complete') || s.includes('done') || s.includes('selesai')) return 'Completed';
-  if (s.includes('cancel') || s.includes('batal')) return 'Cancelled';
-  return 'Confirmed';
+  const s = (apiStatus || "").toLowerCase();
+  if (s.includes("confirm")) return "Confirmed";
+  if (s.includes("on site") || s.includes("onsite") || s.includes("arrive"))
+    return "On Site";
+  if (s.includes("progress")) return "In Progress";
+  if (s.includes("complete") || s.includes("done") || s.includes("selesai"))
+    return "Completed";
+  if (s.includes("cancel") || s.includes("batal")) return "Cancelled";
+  return "Confirmed";
 }
 
 export const getBookings = async (): Promise<Booking[]> => {
-  const rows = await apiFetch<ApiBookingRow[]>(`${ADMIN_API}/user-booking-list`);
+  const rows = await apiFetch<ApiBookingRow[]>(
+    `${ADMIN_API}/user-booking-list`
+  );
 
   const mapped = (rows || []).map((r) => {
     const isoDate = new Date(r.schedule_date).toISOString();
@@ -186,11 +198,12 @@ export const getBookings = async (): Promise<Booking[]> => {
       endDate: isoDate,
       time: r.schedule_time,
       status: mapApiStatusToBookingStatus(r.status),
-      technician: r.technician_name || 'Belum Ditugaskan',
+      technician: r.technician_name || "Belum Ditugaskan",
       lat: Number.isFinite(latNum) ? latNum : 0,
       lng: Number.isFinite(lngNum) ? lngNum : 0,
-      note: r.note || '',
-      additionalCosts: r.additional_cost == null ? 0 : Number(r.additional_cost) || 0,
+      note: r.note || "",
+      additionalCosts:
+        r.additional_cost == null ? 0 : Number(r.additional_cost) || 0,
       photos: {
         arrival: r.arrive_photo || undefined,
         before: r.before_photo || undefined,
@@ -205,7 +218,9 @@ export const getBookings = async (): Promise<Booking[]> => {
 
   // terbaru dulu
   mapped.sort(
-    (a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime() || b.id - a.id,
+    (a, b) =>
+      new Date(b.startDate).getTime() - new Date(a.startDate).getTime() ||
+      b.id - a.id
   );
 
   return mapped;
@@ -225,11 +240,13 @@ export const getAvailability = async (): Promise<Availability> => {
   try {
     const data = await apiFetch<ApiAvailability>(`${ADMIN_API}/availability`);
     return {
-      fullyBookedDates: Array.isArray(data.fullyBookedDates) ? data.fullyBookedDates : [],
+      fullyBookedDates: Array.isArray(data.fullyBookedDates)
+        ? data.fullyBookedDates
+        : [],
       bookedSlots: Array.isArray(data.bookedSlots) ? data.bookedSlots : [],
     };
   } catch (e) {
-    console.warn('Availability API fallback ke config default:', e);
+    console.warn("Availability API fallback ke config default:", e);
     return {
       fullyBookedDates: Array.from(initialFullyBookedDates),
       bookedSlots: Array.from(initialBookedSlots),
@@ -237,9 +254,11 @@ export const getAvailability = async (): Promise<Availability> => {
   }
 };
 
-export const saveAvailability = async (availability: Partial<Availability>): Promise<void> => {
+export const saveAvailability = async (
+  availability: Partial<Availability>
+): Promise<void> => {
   await apiFetch(`${ADMIN_API}/availability`, {
-    method: 'PUT',
+    method: "PUT",
     body: JSON.stringify({
       fullyBookedDates: availability.fullyBookedDates ?? [],
       bookedSlots: availability.bookedSlots ?? [],
@@ -260,12 +279,14 @@ type ApiUserRow = {
 };
 
 export const getUsers = async (): Promise<User[]> => {
-  const rows = await apiFetch<ApiUserRow[]>(`${ADMIN_API}/user-management-list`);
+  const rows = await apiFetch<ApiUserRow[]>(
+    `${ADMIN_API}/user-management-list`
+  );
   return (rows || []).map((u) => ({
     id: u.id,
     name: u.fullname,
     username: u.username,
-    role: (u.role || '').toLowerCase(),
+    role: (u.role || "").toLowerCase(),
   }));
 };
 
@@ -273,27 +294,28 @@ export const getUsers = async (): Promise<User[]> => {
 /*                                   PHOTOS                                   */
 /* -------------------------------------------------------------------------- */
 
-export type PhotoType = 'arrival' | 'before' | 'after';
+export type PhotoType = "arrival" | "before" | "after";
 
 export async function uploadBookingPhoto(
   formId: number,
   type: PhotoType,
-  file: File,
+  file: File
 ): Promise<{ form_id: number; type: PhotoType; url: string }> {
   const fd = new FormData();
-  fd.append('form_id', String(formId));
-  fd.append('type', type);
-  fd.append('file', file);
+  fd.append("form_id", String(formId));
+  fd.append("type", type);
+  fd.append("file", file);
 
   const res = await fetch(`${ADMIN_API}/booking-photo-upload`, {
-    method: 'POST',
-    credentials: 'include',
+    method: "POST",
+    credentials: "include",
     body: fd,
   });
 
   const json = await res.json().catch(() => null);
   if (!res.ok) {
-    const msg = json?.message || json?.error || `Upload gagal (status ${res.status})`;
+    const msg =
+      json?.message || json?.error || `Upload gagal (status ${res.status})`;
     throw new Error(msg);
   }
 
@@ -307,13 +329,16 @@ export async function getBookingPhotos(formId: number): Promise<{
   after: string | null;
 }> {
   const res = await fetch(`${ADMIN_API}/booking-photo?form_id=${formId}`, {
-    method: 'GET',
-    credentials: 'include',
+    method: "GET",
+    credentials: "include",
   });
 
   const json = await res.json().catch(() => null);
   if (!res.ok) {
-    const msg = json?.message || json?.error || `Fetch photo gagal (status ${res.status})`;
+    const msg =
+      json?.message ||
+      json?.error ||
+      `Fetch photo gagal (status ${res.status})`;
     throw new Error(msg);
   }
 
