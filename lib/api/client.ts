@@ -2,6 +2,9 @@
 // Client helper standar: apiRequest + apiArray + baseURL
 // Support cookies session -> credentials: 'include'
 
+// Production https://api-homeservice.viniela.id
+// Localhost http://localhost:4333
+
 export const API_BASE_URL =
   (import.meta as any).env?.VITE_API_BASE_URL || 'https://api-homeservice.viniela.id';
 

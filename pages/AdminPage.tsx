@@ -33,7 +33,6 @@ import {
   updateServiceOnServer,
 } from '../lib/api/admin';
 
-import { simulateNotification } from '../lib/notifications';
 import { BookingStatus, formatDateToKey, generateTimeSlots } from '../lib/storage';
 
 import AdminBookingsSection from '@/components/admin/booking/AdminBookingSection';
@@ -320,33 +319,40 @@ const AdminPage: React.FC = () => {
 
   /* -------------------- HANDLER BOOKING / STATUS / TECH ------------------- */
 
-  const handleBookingUpdate = (id: number, field: 'technician', value: string) => {
-    if (field === 'technician') {
-      const originalBooking = bookings.find((b) => b.id === id);
+  const handleBookingUpdate = async (id: number, field: 'technician', value: string) => {
+    if (field !== 'technician') return;
 
-      if (
-        originalBooking &&
-        originalBooking.technician === 'Belum Ditugaskan' &&
-        value !== 'Belum Ditugaskan'
-      ) {
-        const uiMessage = simulateNotification('technician_assigned', {
-          ...originalBooking,
-          technician: value,
-        });
-        addNotification(uiMessage, 'info');
+    const booking = bookings.find((b) => b.id === id);
+    if (!booking) return;
+
+    const nextUserId = value === 'unassigned' ? null : Number(value);
+    if (value !== 'unassigned' && (!Number.isFinite(nextUserId) || nextUserId <= 0)) {
+      addNotification('Teknisi tidak valid (user_id harus angka).', 'error');
+      return;
+    }
+
+    const nextTechUser = nextUserId == null ? null : allUsers.find((u) => u.id === nextUserId);
+    const nextTechName = nextTechUser?.name ?? 'Belum Ditugaskan';
+
+    try {
+      if (!booking.formId) {
+        addNotification('form_id tidak ditemukan untuk booking ini.', 'error');
+        return;
       }
 
-      const techUser = allUsers.find((u) => u.name === value);
+      // update ke server, status tetap (biar status tidak ikut berubah)
+      // await updateBookingStatusOnServer(booking.formId, booking.status, nextUserId);
+
+      // update state lokal
       const updatedBookings = bookings.map((b) =>
-        b.id === id
-          ? {
-              ...b,
-              technician: value,
-              technicianUserId: value === 'Belum Ditugaskan' ? null : techUser?.id ?? null,
-            }
-          : b,
+        b.id === id ? { ...b, technician: nextTechName, technicianUserId: nextUserId } : b,
       );
       setBookings(updatedBookings);
+
+      addNotification(`Teknisi untuk ${booking.name} berhasil diubah.`, 'success');
+    } catch (err: any) {
+      console.error(err);
+      addNotification(err?.message || 'Gagal mengubah teknisi di server.', 'error');
     }
   };
 
@@ -394,9 +400,9 @@ const AdminPage: React.FC = () => {
   };
 
   const confirmBookingUpdate = async () => {
-    const { bookingId, field, value } = confirmationState;
+    const { bookingId, field } = confirmationState;
 
-    if (!bookingId || !field || !value) {
+    if (!bookingId || !field) {
       closeConfirmationModal();
       return;
     }
@@ -408,27 +414,32 @@ const AdminPage: React.FC = () => {
         return;
       }
 
-      const nextStatus = value as BookingStatus;
+      const nextStatus = booking.status;
+      const nextTechId = booking.technicianUserId ?? null;
 
       try {
-        if (booking.formId) {
-          const userId = booking.technician;
-
-          if (!userId) {
-            addNotification(
-              'Tidak ditemukan user_id untuk teknisi ini. Pastikan teknisi sudah dipilih di daftar user.',
-              'error',
-            );
-            closeConfirmationModal();
-            return;
-          }
-
-          await updateBookingStatusOnServer(booking.formId, nextStatus, userId);
+        if (!booking.formId) {
+          addNotification('form_id tidak ditemukan untuk booking ini.', 'error');
+          closeConfirmationModal();
+          return;
         }
 
+        await updateBookingStatusOnServer(booking.formId, nextStatus, nextTechId);
+
+        const techUser =
+          nextTechId == null ? null : allUsers.find((u) => Number(u.id) === Number(nextTechId));
+
         const updatedBookings = bookings.map((b) =>
-          b.id === bookingId ? { ...b, status: nextStatus } : b,
+          b.id === bookingId
+            ? {
+                ...b,
+                status: nextStatus,
+                technicianUserId: nextTechId,
+                technician: techUser?.name ?? 'Belum Ditugaskan',
+              }
+            : b,
         );
+
         setBookings(updatedBookings);
 
         setStatusDraft((prev) => ({
@@ -436,16 +447,10 @@ const AdminPage: React.FC = () => {
           [bookingId]: nextStatus,
         }));
 
-        addNotification(
-          `Status booking untuk ${booking.name} berhasil diubah menjadi "${nextStatus}".`,
-          'success',
-        );
-      } catch (err) {
+        addNotification(`Booking ${booking.name} berhasil diupdate.`, 'success');
+      } catch (err: any) {
         console.error(err);
-        addNotification(
-          'Gagal mengubah status di server. Silakan cek koneksi atau mapping status & coba lagi.',
-          'error',
-        );
+        addNotification(err?.message || 'Gagal mengubah status/teknisi di server.', 'error');
       } finally {
         closeConfirmationModal();
       }

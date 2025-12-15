@@ -344,13 +344,11 @@ export async function updateBookingStatusOnServer(
     user_id: userId,
   };
 
-  console.log(payload);
-
-  // await apiRequest(ADMIN_ENDPOINTS.updateBookingStatus, {
-  //   method: 'PUT',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   body: JSON.stringify(payload),
-  // });
+  await apiRequest(ADMIN_ENDPOINTS.updateBookingStatus, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 /* --------------------------- Tech Schedule ---------------------------- */

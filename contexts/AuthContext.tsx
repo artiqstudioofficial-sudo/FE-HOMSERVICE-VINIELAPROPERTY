@@ -26,6 +26,9 @@ interface AuthContextType {
 /*                                  CONFIG                                    */
 /* -------------------------------------------------------------------------- */
 
+// Production https://api-homeservice.viniela.id
+// Localhost http://localhost:4333
+
 const API_BASE_URL = (import.meta as any)?.env?.VITE_API_BASE_URL || 'http://localhost:4333';
 
 // Sesuaikan sama route backend kamu
