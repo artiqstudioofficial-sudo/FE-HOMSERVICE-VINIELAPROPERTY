@@ -37,6 +37,23 @@ type Props = {
   onTechnicianChange: (id: number, field: 'technician', value: string) => void;
 };
 
+function formatDateYYYYMMDD(input?: string | Date | null): string {
+  if (!input) return '-';
+
+  // kalau string ISO: "2025-12-16T17:00:00.000Z" -> ambil 10 char pertama
+  if (typeof input === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}/.test(input)) return input.slice(0, 10);
+    const d = new Date(input);
+    if (Number.isNaN(d.getTime())) return input; // fallback kalau bukan format date
+    return d.toISOString().slice(0, 10);
+  }
+
+  // Date object
+  const d = input;
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toISOString().slice(0, 10);
+}
+
 const AdminBookingsSection: React.FC<Props> = ({
   paginatedBookings,
   currentPage,
@@ -113,9 +130,7 @@ const AdminBookingsSection: React.FC<Props> = ({
 
           <tbody>
             {paginatedBookings.map((b) => {
-              const technicianValue = b.technicianUserId
-                ? String(b.technicianUserId)
-                : 'unassigned';
+              const dateText = formatDateYYYYMMDD(b.startDate);
 
               return (
                 <tr key={b.id} className="border-t border-gray-100 dark:border-slate-700">
@@ -127,7 +142,7 @@ const AdminBookingsSection: React.FC<Props> = ({
                   <td className="px-4 py-3">{b.service}</td>
 
                   <td className="px-4 py-3">
-                    {b.startDate} • {b.time}
+                    {dateText} • {b.time}
                   </td>
 
                   <td className="px-4 py-3">
