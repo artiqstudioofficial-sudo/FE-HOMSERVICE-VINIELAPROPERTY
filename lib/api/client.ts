@@ -5,8 +5,7 @@
 // Production https://api-homeservice.viniela.id
 // Localhost http://localhost:4333
 
-export const API_BASE_URL =
-  (import.meta as any).env?.VITE_API_BASE_URL || 'https://api-homeservice.viniela.id';
+export const API_BASE_URL = "https://api-homeservice.viniela.id";
 
 type ApiRequestInit = RequestInit & {
   // kalau kamu butuh override baseUrl per call
@@ -15,33 +14,40 @@ type ApiRequestInit = RequestInit & {
 
 export function formatDateForApi(date: Date): string {
   const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 
 function buildUrl(path: string, baseUrl?: string) {
   // path bisa sudah full URL
   if (/^https?:\/\//i.test(path)) return path;
-  const base = (baseUrl ?? API_BASE_URL).replace(/\/+$/, '');
-  const p = path.startsWith('/') ? path : `/${path}`;
+  const base = (baseUrl ?? API_BASE_URL).replace(/\/+$/, "");
+  const p = path.startsWith("/") ? path : `/${path}`;
   return `${base}${p}`;
 }
 
-export async function apiRequest<T = any>(path: string, init: ApiRequestInit = {}): Promise<T> {
+export async function apiRequest<T = any>(
+  path: string,
+  init: ApiRequestInit = {}
+): Promise<T> {
   const url = buildUrl(path, init.baseUrl);
 
   const res = await fetch(url, {
-    credentials: 'include',
+    credentials: "include",
     ...init,
     headers: {
-      Accept: 'application/json',
+      Accept: "application/json",
       ...(init.headers || {}),
     },
   });
 
-  const isJson = (res.headers.get('content-type') || '').includes('application/json');
-  const payload = isJson ? await res.json().catch(() => null) : await res.text().catch(() => null);
+  const isJson = (res.headers.get("content-type") || "").includes(
+    "application/json"
+  );
+  const payload = isJson
+    ? await res.json().catch(() => null)
+    : await res.text().catch(() => null);
 
   if (!res.ok) {
     const msg =
@@ -60,7 +66,7 @@ export async function apiRequest<T = any>(path: string, init: ApiRequestInit = {
  * - []
  */
 export async function apiArray<T = any>(path: string): Promise<T[]> {
-  const res: any = await apiRequest(path, { method: 'GET' });
+  const res: any = await apiRequest(path, { method: "GET" });
 
   if (Array.isArray(res)) return res as T[];
   if (Array.isArray(res?.data)) return res.data as T[];

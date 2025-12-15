@@ -1,11 +1,18 @@
-import React, { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, {
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useNavigate } from "react-router-dom";
 
 /* -------------------------------------------------------------------------- */
 /*                                   TYPES                                    */
 /* -------------------------------------------------------------------------- */
 
-export type UserRole = 'admin' | 'technician';
+export type UserRole = "admin" | "technician";
 
 export interface CurrentUser {
   id: number;
@@ -29,7 +36,7 @@ interface AuthContextType {
 // Production https://api-homeservice.viniela.id
 // Localhost http://localhost:4333
 
-const API_BASE_URL = (import.meta as any)?.env?.VITE_API_BASE_URL || 'http://localhost:4333';
+const API_BASE_URL = "https://api-homeservice.viniela.id";
 
 // Sesuaikan sama route backend kamu
 const AUTH_ENDPOINTS = {
@@ -45,9 +52,9 @@ const AUTH_ENDPOINTS = {
 async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
-    credentials: 'include', // <— penting untuk session cookie
+    credentials: "include", // <— penting untuk session cookie
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...(init?.headers || {}),
     },
   });
@@ -55,7 +62,8 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const json = await res.json().catch(() => null);
 
   if (!res.ok) {
-    const msg = json?.message || json?.error || `Request gagal (status ${res.status})`;
+    const msg =
+      json?.message || json?.error || `Request gagal (status ${res.status})`;
     throw new Error(msg);
   }
 
@@ -77,12 +85,15 @@ type ApiEnvelope<T> = {
 /*                         AUTH API (login/me/logout)                         */
 /* -------------------------------------------------------------------------- */
 
-async function authLoginApi(username: string, password: string): Promise<CurrentUser> {
+async function authLoginApi(
+  username: string,
+  password: string
+): Promise<CurrentUser> {
   // body sesuai backend kamu
   const body = JSON.stringify({ username, password });
 
   const resp = await apiFetch<ApiEnvelope<any>>(AUTH_ENDPOINTS.login, {
-    method: 'POST',
+    method: "POST",
     body,
   });
 
@@ -100,16 +111,16 @@ async function authLoginApi(username: string, password: string): Promise<Current
 
 async function authMeApi(): Promise<CurrentUser> {
   const resp = await apiFetch<ApiEnvelope<any>>(AUTH_ENDPOINTS.me, {
-    method: 'GET',
+    method: "GET",
   });
 
-  if (!resp?.data) throw new Error('Session tidak valid / belum login.');
+  if (!resp?.data) throw new Error("Session tidak valid / belum login.");
   return normalizeUser(resp.data);
 }
 
 async function authLogoutApi(): Promise<void> {
   await apiFetch<ApiEnvelope<any>>(AUTH_ENDPOINTS.logout, {
-    method: 'POST',
+    method: "POST",
   });
 }
 
@@ -121,15 +132,18 @@ function normalizeUser(raw: any): CurrentUser {
   // support beberapa bentuk field yang umum muncul dari backend
   // contoh: fullname/name/username/role
   const id = Number(raw.id);
-  const name = String(raw.name ?? raw.fullname ?? raw.full_name ?? '');
-  const username = String(raw.username ?? '');
-  const role = String(raw.role ?? raw.role_name ?? '').toLowerCase();
+  const name = String(raw.name ?? raw.fullname ?? raw.full_name ?? "");
+  const username = String(raw.username ?? "");
+  const role = String(raw.role ?? raw.role_name ?? "").toLowerCase();
 
   // mapping role bebas: "technician"/"admin"
-  const normalizedRole: UserRole = role === 'technician' ? 'technician' : 'admin';
+  const normalizedRole: UserRole =
+    role === "technician" ? "technician" : "admin";
 
   if (!id || !username) {
-    throw new Error('Response user tidak valid dari server (id/username kosong).');
+    throw new Error(
+      "Response user tidak valid dari server (id/username kosong)."
+    );
   }
 
   return { id, name: name || username, username, role: normalizedRole };
@@ -141,7 +155,9 @@ function normalizeUser(raw: any): CurrentUser {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
   const navigate = useNavigate();
 
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -169,7 +185,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = async (username: string, pass: string): Promise<CurrentUser | null> => {
+  const login = async (
+    username: string,
+    pass: string
+  ): Promise<CurrentUser | null> => {
     try {
       const user = await authLoginApi(username, pass);
       setCurrentUser(user);
@@ -185,10 +204,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await authLogoutApi();
     } catch (err) {
       // walau gagal logout (misal session sudah habis), tetap bersihin state FE
-      console.warn('logout api failed:', err);
+      console.warn("logout api failed:", err);
     } finally {
       setCurrentUser(null);
-      navigate('/');
+      navigate("/");
     }
   };
 
@@ -200,7 +219,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       logout,
       refreshMe,
     }),
-    [currentUser, isAuthLoading],
+    [currentUser, isAuthLoading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -208,6 +227,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within an AuthProvider');
+  if (!context) throw new Error("useAuth must be used within an AuthProvider");
   return context;
 };
