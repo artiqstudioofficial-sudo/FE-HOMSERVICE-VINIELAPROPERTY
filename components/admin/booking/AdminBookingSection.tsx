@@ -163,13 +163,8 @@ const AdminBookingsSection: React.FC<Props> = ({
                   <td className="px-4 py-3">
                     <select
                       value={statusDraft[b.id] ?? b.status}
-                      onChange={(e) =>
-                        setStatusDraft((prev) => ({
-                          ...prev,
-                          [b.id]: e.target.value as BookingStatus,
-                        }))
-                      }
-                      className="rounded-md border-gray-300 dark:bg-slate-700 dark:border-slate-600 text-xs"
+                      disabled
+                      className="rounded-md border-gray-300 dark:bg-slate-700 dark:border-slate-600 text-xs opacity-70 cursor-not-allowed"
                     >
                       {statuses.map((s) => (
                         <option key={s} value={s}>
@@ -180,13 +175,12 @@ const AdminBookingsSection: React.FC<Props> = ({
                   </td>
 
                   <td className="px-4 py-3 text-right space-x-2">
-                    <button
+                    {/* <button
                       onClick={() => onStatusSubmit(b.id)}
                       className="px-3 py-1 text-xs rounded-lg bg-primary text-white"
                     >
                       Update
-                    </button>
-
+                    </button> */}
                     <WhatsAppButton booking={b} />
                   </td>
                 </tr>
