@@ -400,7 +400,7 @@ const AdminPage: React.FC = () => {
   };
 
   const confirmBookingUpdate = async () => {
-    const { bookingId, field } = confirmationState;
+    const { bookingId, field, value } = confirmationState;
 
     if (!bookingId || !field) {
       closeConfirmationModal();
@@ -414,7 +414,7 @@ const AdminPage: React.FC = () => {
         return;
       }
 
-      const nextStatus = booking.status;
+      const nextStatus = (value as BookingStatus) ?? statusDraft[bookingId] ?? booking.status; // ✅ ambil yg baru
       const nextTechId = booking.technicianUserId ?? null;
 
       try {
@@ -424,16 +424,22 @@ const AdminPage: React.FC = () => {
           return;
         }
 
+        // opsional: validasi teknisi kalau backend butuh userId
+        if (!nextTechId) {
+          addNotification('Teknisi belum dipilih. Pilih teknisi dulu.', 'error');
+          closeConfirmationModal();
+          return;
+        }
+
         await updateBookingStatusOnServer(booking.formId, nextStatus, nextTechId);
 
-        const techUser =
-          nextTechId == null ? null : allUsers.find((u) => Number(u.id) === Number(nextTechId));
+        const techUser = allUsers.find((u) => Number(u.id) === Number(nextTechId));
 
         const updatedBookings = bookings.map((b) =>
           b.id === bookingId
             ? {
                 ...b,
-                status: nextStatus,
+                status: nextStatus, // ✅ status baru
                 technicianUserId: nextTechId,
                 technician: techUser?.name ?? 'Belum Ditugaskan',
               }
