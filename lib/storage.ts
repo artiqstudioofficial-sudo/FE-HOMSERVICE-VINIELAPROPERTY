@@ -5,14 +5,9 @@ import {
 
 /**
  * STORAGE FINAL (API)
- * - bookings      : API
- * - users         : API
- * - availability  : API
- * - photos        : API upload + url saved to DB (forms.*_photo)
  */
 
 const API_BASE_URL = "https://api-homeservice.viniela.id";
-
 const ADMIN_API = `${API_BASE_URL}/api/v1/admin`;
 
 export type BookingStatus =
@@ -23,34 +18,46 @@ export type BookingStatus =
   | "Cancelled";
 
 export interface Booking {
-  id: number; // apply_id (kalau ada) atau form_id
-  name: string; // customer_name
-  whatsapp: string; // customer_wa
+  id: number; // apply_id (kalau ada) atau form_id (untuk key UI)
+  formId: number; // ✅ form_id asli (buat update status / upload photo)
+  applyId?: number | null;
+
+  name: string;
+  whatsapp: string;
   address: string;
-  service: string; // service name (dari query kamu)
-  startDate: string; // ISO (dari schedule_date)
-  endDate: string; // ISO (sama)
-  time: string; // schedule_time
+  service: string;
+
+  startDate: string; // ISO
+  endDate: string; // ISO
+  time: string;
+
   status: BookingStatus;
-  technician: string; // technician_name atau "Belum Ditugaskan"
+
+  technician: string;
+  technicianId?: number | null;
+  technicianUsername?: string | null;
+
   lat: number;
   lng: number;
+
   arrivalTime?: string | null;
   startTime?: string | null;
   endTime?: string | null;
   workDurationMinutes?: number | null;
+
   photos?: {
-    arrival?: string; // url/path dari backend
+    arrival?: string;
     before?: string;
     after?: string;
   };
+
   note?: string;
   additionalCosts?: number;
 }
 
 export interface User {
   id: number;
-  name: string; // fullname
+  name: string;
   username: string;
   role: "admin" | "technician" | string;
 }
@@ -82,7 +89,6 @@ async function apiFetch<T>(url: string, init: RequestInit = {}): Promise<T> {
     throw new Error(msg);
   }
 
-  // backend misc.response -> { error, message, data }
   return (json?.data ?? json) as T;
 }
 
@@ -143,16 +149,18 @@ type ApiBookingRow = {
   apply_id: number | null;
   form_id: number;
 
+  technician_id: number | string | null;
   technician_name: string | null;
+  technician_username: string | null;
 
   customer_name: string;
   customer_wa: string;
   address: string;
   service: string;
 
-  schedule_date: string; // YYYY-MM-DD
-  schedule_time: string; // HH:mm
-  status: string; // form_statuses.name
+  schedule_date: string; // ISO "2025-12-15T00:00:00.000Z"
+  schedule_time: string; // "16:30"
+  status: string; // "ONSITE" etc.
 
   note?: string | null;
   additional_cost?: number | string | null;
@@ -166,15 +174,45 @@ type ApiBookingRow = {
 };
 
 function mapApiStatusToBookingStatus(apiStatus: string): BookingStatus {
-  const s = (apiStatus || "").toLowerCase();
-  if (s.includes("confirm")) return "Confirmed";
-  if (s.includes("on site") || s.includes("onsite") || s.includes("arrive"))
+  const s = (apiStatus || "").toLowerCase().trim();
+
+  // support kode: ONSITE / INPROGRESS / CONFIRMED / COMPLETED / CANCELLED
+  if (s === "confirmed" || s.includes("confirm")) return "Confirmed";
+
+  if (
+    s === "onsite" ||
+    s === "on site" ||
+    s.includes("on site") ||
+    s.includes("onsite") ||
+    s.includes("arrive")
+  )
     return "On Site";
-  if (s.includes("progress")) return "In Progress";
-  if (s.includes("complete") || s.includes("done") || s.includes("selesai"))
+
+  if (s === "inprogress" || s === "in progress" || s.includes("progress"))
+    return "In Progress";
+
+  if (
+    s === "completed" ||
+    s.includes("complete") ||
+    s.includes("done") ||
+    s.includes("selesai")
+  )
     return "Completed";
-  if (s.includes("cancel") || s.includes("batal")) return "Cancelled";
+
+  if (
+    s === "cancelled" ||
+    s === "canceled" ||
+    s.includes("cancel") ||
+    s.includes("batal")
+  )
+    return "Cancelled";
+
   return "Confirmed";
+}
+
+function toNumberSafe(v: any, fallback = 0): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 export const getBookings = async (): Promise<Booking[]> => {
@@ -182,45 +220,63 @@ export const getBookings = async (): Promise<Booking[]> => {
     `${ADMIN_API}/user-booking-list`
   );
 
-  const mapped = (rows || []).map((r) => {
+  const mapped: Booking[] = (rows || []).map((r) => {
+    // schedule_date sudah ISO string => simpan apa adanya (normalize ke ISO)
     const isoDate = new Date(r.schedule_date).toISOString();
 
-    const latNum = r.lat == null ? 0 : Number(r.lat);
-    const lngNum = r.lng == null ? 0 : Number(r.lng);
+    const lat = r.lat == null ? 0 : toNumberSafe(r.lat, 0);
+    const lng = r.lng == null ? 0 : toNumberSafe(r.lng, 0);
+
+    const technicianId =
+      r.technician_id == null ? null : toNumberSafe(r.technician_id, 0);
+
+    const applyId = r.apply_id ?? null;
 
     return {
-      id: Number(r.apply_id ?? r.form_id),
+      id: Number(applyId ?? r.form_id), // key UI
+      formId: Number(r.form_id), // ✅ form id asli (buat update/upload)
+      applyId,
+
       name: r.customer_name,
       whatsapp: r.customer_wa,
       address: r.address,
       service: r.service,
+
       startDate: isoDate,
       endDate: isoDate,
       time: r.schedule_time,
+
       status: mapApiStatusToBookingStatus(r.status),
+
       technician: r.technician_name || "Belum Ditugaskan",
-      lat: Number.isFinite(latNum) ? latNum : 0,
-      lng: Number.isFinite(lngNum) ? lngNum : 0,
+      technicianId,
+      technicianUsername: r.technician_username ?? null,
+
+      lat,
+      lng,
+
       note: r.note || "",
       additionalCosts:
-        r.additional_cost == null ? 0 : Number(r.additional_cost) || 0,
+        r.additional_cost == null ? 0 : toNumberSafe(r.additional_cost, 0),
+
       photos: {
         arrival: r.arrive_photo || undefined,
         before: r.before_photo || undefined,
         after: r.after_photo || undefined,
       },
+
       arrivalTime: null,
       startTime: null,
       endTime: null,
       workDurationMinutes: null,
-    } as Booking;
+    };
   });
 
   // terbaru dulu
   mapped.sort(
     (a, b) =>
       new Date(b.startDate).getTime() - new Date(a.startDate).getTime() ||
-      b.id - a.id
+      (b.applyId ?? b.formId) - (a.applyId ?? a.formId)
   );
 
   return mapped;
@@ -348,7 +404,6 @@ export async function getBookingPhotos(formId: number): Promise<{
 
 /**
  * helper untuk bikin URL absolute kalau backend hanya simpan path "/uploads/..."
- * - contoh: resolveAssetUrl("/uploads/forms/1/arrival.jpg")
  */
 export function resolveAssetUrl(pathOrUrl?: string | null): string | null {
   if (!pathOrUrl) return null;

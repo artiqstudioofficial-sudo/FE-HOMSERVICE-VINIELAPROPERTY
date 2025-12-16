@@ -19,7 +19,7 @@ const AboutPage = lazy(() => import("./pages/AboutPage"));
 const ContactPage = lazy(() => import("./pages/ContactPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
-const TechnicianPage = lazy(() => import("./pages/TechnicianPage"));
+const TechnicianPage = lazy(() => import("./pages/Technician/TechnicianPage"));
 const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"));
 const FaqPage = lazy(() => import("./pages/FaqPage"));
 
