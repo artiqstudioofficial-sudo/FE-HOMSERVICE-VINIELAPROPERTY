@@ -29,7 +29,7 @@ interface AuthContextType {
 // Production https://api-homeservice.viniela.id
 // Localhost http://localhost:4333
 
-const API_BASE_URL = 'http://localhost:4333';
+const API_BASE_URL = 'https://api-homeservice.viniela.id';
 
 // Sesuaikan sama route backend kamu
 const AUTH_ENDPOINTS = {
