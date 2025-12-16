@@ -14,10 +14,10 @@ import {
   Trash2,
   Wrench,
   Zap,
-} from "lucide-react";
-import React from "react";
+} from 'lucide-react';
+import React from 'react';
 
-const iconProps = { size: 40, strokeWidth: 1.5, className: "w-10 h-10" };
+const iconProps = { size: 40, strokeWidth: 1.5, className: 'w-10 h-10' };
 
 export interface Service {
   id: number;
