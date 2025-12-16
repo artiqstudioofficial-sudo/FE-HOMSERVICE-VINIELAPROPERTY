@@ -4,9 +4,9 @@ import { useNotification } from "@/contexts/NotificationContext";
 import { Booking, BookingStatus, uploadBookingPhoto } from "@/lib/storage";
 import { updateBookingStatusOnServer } from "@/lib/api/admin";
 import { simulateNotification } from "@/lib/notifications";
-import PhotoUpload from "./PhotoUpload";
 import GenericConfirmationModal from "../../components/GenericConfirmationModal";
 import { formatScheduleYYYYMMDD } from "../../components/utils/schedule";
+import PhotoUpload from "./PhotoUpload";
 
 type Props = {
   booking: Booking;

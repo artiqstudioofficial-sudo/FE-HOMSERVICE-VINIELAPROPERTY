@@ -1,112 +1,155 @@
+import React, { useMemo, useRef, useState } from "react";
 import { resolveAssetUrl } from "@/lib/storage";
-import React, { useMemo, useState } from "react";
 
-type Props = {
+const PhotoUpload: React.FC<{
   label: string;
   photoUrlOrPath: string | undefined;
   onUploadFile: (file: File) => Promise<void>;
   disabled?: boolean;
-};
-
-const PhotoUpload: React.FC<Props> = ({
-  label,
-  photoUrlOrPath,
-  onUploadFile,
-  disabled = false,
-}) => {
+  size?: number; // px
+}> = ({ label, photoUrlOrPath, onUploadFile, disabled = false, size = 72 }) => {
   const [isUploading, setIsUploading] = useState(false);
+  const [localPreview, setLocalPreview] = useState<string | null>(null);
 
-  const resolved = useMemo(
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const serverResolved = useMemo(
     () => resolveAssetUrl(photoUrlOrPath),
     [photoUrlOrPath]
   );
 
+  // ✅ tampilkan local preview dulu kalau ada
+  const shown = localPreview || serverResolved || null;
+
+  const openPicker = () => {
+    if (disabled || isUploading) return;
+    inputRef.current?.click();
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const inputEl = e.target;
+    const file = inputEl.files?.[0];
     if (!file) return;
+
+    // ✅ instant preview
+    const previewUrl = URL.createObjectURL(file);
+    setLocalPreview(previewUrl);
 
     try {
       setIsUploading(true);
       await onUploadFile(file);
+      // kalau upload sukses, biarin local preview tetap tampil dulu,
+      // nanti pas parent update photoUrlOrPath, serverResolved akan keisi dan shown akan tetap OK.
     } catch (err: any) {
       console.error(err);
       alert(err?.message || "Gagal upload foto.");
+      // gagal -> balikin preview
+      setLocalPreview(null);
     } finally {
       setIsUploading(false);
-      e.currentTarget.value = "";
+      if (inputRef.current) inputRef.current.value = "";
+      // cleanup object url biar ga leak
+      // jangan revoke kalau masih dipakai shown, tapi kita revoke setelah sedikit delay.
+      setTimeout(() => {
+        URL.revokeObjectURL(previewUrl);
+      }, 1000);
     }
   };
 
   return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-        {label}
-      </label>
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+          {label}
+        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {shown ? "Preview siap" : "Belum ada foto"}
+        </p>
+      </div>
 
-      <div className="mt-1 flex items-center space-x-4">
-        <div className="w-20 h-20 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden">
-          {isUploading ? (
-            <svg
-              className="animate-spin h-5 w-5 text-gray-500"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              />
-            </svg>
-          ) : resolved ? (
+      <div className="shrink-0">
+        <button
+          type="button"
+          onClick={openPicker}
+          disabled={disabled || isUploading}
+          className={`group relative overflow-hidden rounded-xl border shadow-sm transition ${
+            disabled ? "opacity-60 cursor-not-allowed" : "hover:shadow-md"
+          } border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800`}
+          style={{ width: size, height: size }}
+          aria-label={shown ? `Ganti ${label}` : `Unggah ${label}`}
+        >
+          {/* thumbnail */}
+          {shown ? (
             <img
-              src={resolved}
-              alt="Preview"
+              src={shown}
+              alt={label}
               className="w-full h-full object-cover"
             />
           ) : (
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-8 w-8 text-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14"
-              />
-            </svg>
+            <div className="w-full h-full flex items-center justify-center bg-gray-50 dark:bg-slate-900">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6 text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14"
+                />
+              </svg>
+            </div>
           )}
-        </div>
 
-        <label
-          htmlFor={`file-upload-${label.replace(/\s+/g, "-")}`}
-          className={`relative cursor-pointer bg-white dark:bg-slate-600 py-2 px-3 border border-gray-300 dark:border-slate-500 rounded-md shadow-sm text-sm leading-4 font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-500 ${
-            disabled ? "opacity-50 cursor-not-allowed" : ""
-          }`}
-        >
-          <span>{resolved ? "Ganti Foto" : "Unggah Foto"}</span>
+          {/* overlay */}
+          <div
+            className={`absolute inset-0 flex items-center justify-center text-[11px] font-bold text-white transition ${
+              isUploading
+                ? "bg-black/55 opacity-100"
+                : "bg-black/40 opacity-0 group-hover:opacity-100"
+            }`}
+          >
+            {isUploading ? (
+              <span className="inline-flex items-center gap-2">
+                <svg
+                  className="animate-spin h-4 w-4 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                Upload
+              </span>
+            ) : (
+              <span>{shown ? "Ganti" : "Unggah"}</span>
+            )}
+          </div>
+
           <input
-            id={`file-upload-${label.replace(/\s+/g, "-")}`}
-            name="file-upload"
+            ref={inputRef}
             type="file"
             className="sr-only"
             onChange={handleFileChange}
             accept="image/*"
-            disabled={disabled}
+            disabled={disabled || isUploading}
           />
-        </label>
+        </button>
       </div>
     </div>
   );
