@@ -1,4 +1,3 @@
-// components/admin/sections/TechniciansSection.tsx
 import { PencilLine, Trash2, UserPlus } from 'lucide-react';
 import React from 'react';
 
