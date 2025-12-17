@@ -298,12 +298,12 @@ export async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
       lat: Number(row.lat),
       lng: Number(row.lng),
 
-      arrivalTime: row.arrival_time,
-      startTime: row.start_time,
-      endTime: row.end_time,
-      workDurationMinutes: row.work_duration_minutes,
+      arrival_time: row.arrival_time,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      work_duration_minutes: row.work_duration_minutes,
 
-      additionalCosts: row.additional_cost
+      additional_cost: row.additional_cost
         ? Number(row.additional_cost) || 0
         : 0,
       note: row.note || "",

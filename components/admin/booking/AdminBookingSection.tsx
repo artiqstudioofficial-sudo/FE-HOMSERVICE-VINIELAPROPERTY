@@ -299,10 +299,10 @@ const AdminBookingsSection: React.FC<Props> = ({
                                     Tiba
                                   </div>
                                   <div className="text-gray-900 dark:text-white">
-                                    {b.arrivalTime
+                                    {b.arrival_time
                                       ? `${formatDateYYYYMMDD(
-                                          b.arrivalTime
-                                        )} ${formatClock(b.arrivalTime)}`
+                                          b.arrival_time
+                                        )} ${formatClock(b.arrival_time)}`
                                       : "-"}
                                   </div>
                                 </div>
@@ -312,10 +312,10 @@ const AdminBookingsSection: React.FC<Props> = ({
                                     Mulai
                                   </div>
                                   <div className="text-gray-900 dark:text-white">
-                                    {b.startTime
+                                    {b.start_time
                                       ? `${formatDateYYYYMMDD(
-                                          b.startTime
-                                        )} ${formatClock(b.startTime)}`
+                                          b.start_time
+                                        )} ${formatClock(b.start_time)}`
                                       : "-"}
                                   </div>
                                 </div>
@@ -327,10 +327,10 @@ const AdminBookingsSection: React.FC<Props> = ({
                                     Selesai
                                   </div>
                                   <div className="text-gray-900 dark:text-white">
-                                    {b.endTime
+                                    {b.end_time
                                       ? `${formatDateYYYYMMDD(
-                                          b.endTime
-                                        )} ${formatClock(b.endTime)}`
+                                          b.end_time
+                                        )} ${formatClock(b.end_time)}`
                                       : "-"}
                                   </div>
                                 </div>
@@ -340,8 +340,8 @@ const AdminBookingsSection: React.FC<Props> = ({
                                     Durasi
                                   </div>
                                   <div className="text-gray-900 dark:text-white">
-                                    {b.workDurationMinutes != null
-                                      ? `${b.workDurationMinutes} mnt`
+                                    {b.work_duration_minutes != null
+                                      ? `${b.work_duration_minutes} mnt`
                                       : "-"}
                                   </div>
                                 </div>
@@ -353,7 +353,7 @@ const AdminBookingsSection: React.FC<Props> = ({
                                     Biaya Tambahan
                                   </div>
                                   <div className="text-gray-900 dark:text-white">
-                                    {formatIDR(b.additionalCosts ?? 0)}
+                                    {formatIDR(b.additional_cost ?? 0)}
                                   </div>
                                 </div>
 
@@ -396,7 +396,7 @@ const AdminBookingsSection: React.FC<Props> = ({
                                     title="Klik untuk membuka"
                                   >
                                     <img
-                                      src={url}
+                                      src={`https://api-homeservice.viniela.id${url}`}
                                       alt={`Bukti foto ${idx + 1}`}
                                       className="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-slate-600 hover:opacity-90"
                                       loading="lazy"
