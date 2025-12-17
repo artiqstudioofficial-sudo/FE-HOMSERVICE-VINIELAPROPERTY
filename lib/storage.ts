@@ -40,10 +40,10 @@ export interface Booking {
   lat: number;
   lng: number;
 
-  arrivalTime?: string | null;
-  startTime?: string | null;
-  endTime?: string | null;
-  workDurationMinutes?: number | null;
+  arrival_time?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  work_duration_minutes?: string | null;
 
   photos?: {
     arrival?: string;
@@ -52,7 +52,7 @@ export interface Booking {
   };
 
   note?: string;
-  additionalCosts?: number;
+  additional_cost?: number;
 }
 
 export interface User {

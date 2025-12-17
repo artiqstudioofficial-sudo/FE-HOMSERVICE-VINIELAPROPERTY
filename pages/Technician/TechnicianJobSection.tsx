@@ -26,7 +26,8 @@ const BOOKING_STATUS_TO_API_CODE: Record<BookingStatus, number> = {
 async function updateBookingStatusOnServer(
   formId: number,
   status: BookingStatus,
-  userId: number
+  userId: number,
+  patch: Partial<Booking>
 ) {
   const statusCode =
     BOOKING_STATUS_TO_API_CODE[status] ?? BOOKING_STATUS_TO_API_CODE.Confirmed;
@@ -42,6 +43,12 @@ async function updateBookingStatusOnServer(
     body: JSON.stringify({
       form_id: formId,
       user_id: userId,
+      arrival_time: patch.arrival_time,
+      start_time: patch.start_time,
+      end_time: patch.end_time,
+      work_duration_minutes: patch.work_duration_minutes,
+      note: patch.note,
+      additional_cost: patch.additional_cost,
       status: statusCode,
     }),
   });
@@ -132,7 +139,12 @@ const JobCard: React.FC<{
 
     if (!formId) throw new Error("booking.id tidak valid untuk form_id.");
 
-    await updateBookingStatusOnServer(formId, nextStatus, currentTechnicianId);
+    await updateBookingStatusOnServer(
+      formId,
+      nextStatus,
+      currentTechnicianId,
+      patch
+    );
 
     const updated: Booking = { ...booking, ...patch, status: nextStatus };
     onBookingUpdateLocal(updated);
@@ -151,12 +163,12 @@ const JobCard: React.FC<{
           arrivalTime: nowIso,
         });
         addNotification(uiMessage, "info");
-        await pushStatusToServer(status, { arrivalTime: nowIso });
+        await pushStatusToServer(status, { arrival_time: nowIso });
         return;
       }
 
       if (status === "In Progress") {
-        await pushStatusToServer(status, { startTime: nowIso });
+        await pushStatusToServer(status, { start_time: nowIso });
         return;
       }
 
@@ -190,14 +202,6 @@ const JobCard: React.FC<{
     await onRefresh();
   };
 
-  const handleCompleteJob = () => {
-    if (!booking.photos?.after) {
-      alert("Harap unggah foto setelah pengerjaan selesai.");
-      return;
-    }
-    setIsConfirmingComplete(true);
-  };
-
   const executeCompleteJob = async () => {
     try {
       const now = new Date();
@@ -208,10 +212,10 @@ const JobCard: React.FC<{
       );
 
       await pushStatusToServer("Completed", {
-        endTime: now.toISOString(),
-        workDurationMinutes: duration > 0 ? duration : 0,
+        end_time: now.toISOString(),
+        work_duration_minutes: duration > 0 ? String(duration) : String(0),
         note: additionalWorkNotes,
-        additionalCosts,
+        additional_cost: additionalCosts,
       });
 
       const uiMessage = simulateNotification("job_completed", {
