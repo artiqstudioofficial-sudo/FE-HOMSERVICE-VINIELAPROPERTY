@@ -43,7 +43,7 @@ export interface Booking {
   arrivalTime?: string | null;
   startTime?: string | null;
   endTime?: string | null;
-  workDurationMinutes?: number | null;
+  workDurationMinutes?: string | null;
 
   photos?: {
     arrival?: string;

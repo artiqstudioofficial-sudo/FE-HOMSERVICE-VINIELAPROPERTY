@@ -190,14 +190,6 @@ const JobCard: React.FC<{
     await onRefresh();
   };
 
-  const handleCompleteJob = () => {
-    if (!booking.photos?.after) {
-      alert("Harap unggah foto setelah pengerjaan selesai.");
-      return;
-    }
-    setIsConfirmingComplete(true);
-  };
-
   const executeCompleteJob = async () => {
     try {
       const now = new Date();
@@ -209,7 +201,7 @@ const JobCard: React.FC<{
 
       await pushStatusToServer("Completed", {
         endTime: now.toISOString(),
-        workDurationMinutes: duration > 0 ? duration : 0,
+        workDurationMinutes: duration > 0 ? String(duration) : String(0),
         note: additionalWorkNotes,
         additionalCosts,
       });
