@@ -1,15 +1,10 @@
-import React, { useMemo, useRef, useState } from "react";
-import GenericConfirmationModal from "@/components/GenericConfirmationModal";
-import { useNotification } from "@/contexts/NotificationContext";
-import { simulateNotification } from "@/lib/notifications";
+import GenericConfirmationModal from '@/components/GenericConfirmationModal';
+import { useNotification } from '@/contexts/NotificationContext';
+import { simulateNotification } from '@/lib/notifications';
+import React, { useMemo, useState } from 'react';
 
-import {
-  Booking,
-  BookingStatus,
-  resolveAssetUrl,
-  uploadBookingPhoto,
-} from "@/lib/storage";
-import PhotoUpload from "./PhotoUpload";
+import { Booking, BookingStatus, uploadBookingPhoto } from '@/lib/storage';
+import PhotoUpload from './PhotoUpload';
 
 /* -------------------------------------------------------------------------- */
 /*                         STATUS MAPPING (UI -> API)                          */
@@ -17,8 +12,8 @@ import PhotoUpload from "./PhotoUpload";
 
 const BOOKING_STATUS_TO_API_CODE: Record<BookingStatus, number> = {
   Confirmed: 1,
-  "On Site": 2,
-  "In Progress": 3,
+  'On Site': 2,
+  'In Progress': 3,
   Completed: 4,
   Cancelled: 5,
 };
@@ -27,19 +22,16 @@ async function updateBookingStatusOnServer(
   formId: number,
   status: BookingStatus,
   userId: number,
-  patch: Partial<Booking>
+  patch: Partial<Booking>,
 ) {
-  const statusCode =
-    BOOKING_STATUS_TO_API_CODE[status] ?? BOOKING_STATUS_TO_API_CODE.Confirmed;
+  const statusCode = BOOKING_STATUS_TO_API_CODE[status] ?? BOOKING_STATUS_TO_API_CODE.Confirmed;
 
-  const base =
-    (import.meta as any)?.env?.VITE_API_BASE_URL ||
-    "https://api-homeservice.viniela.id";
+  const base = (import.meta as any)?.env?.VITE_API_BASE_URL || 'https://api-homeservice.viniela.id';
 
   const res = await fetch(`${base}/api/v1/admin/update-booking-status`, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       form_id: formId,
       user_id: userId,
@@ -55,10 +47,7 @@ async function updateBookingStatusOnServer(
 
   const json = await res.json().catch(() => null);
   if (!res.ok) {
-    const msg =
-      json?.message ||
-      json?.error ||
-      `Gagal update status (status ${res.status})`;
+    const msg = json?.message || json?.error || `Gagal update status (status ${res.status})`;
     throw new Error(msg);
   }
 }
@@ -92,59 +81,44 @@ const JobCard: React.FC<{
   const [isCompleting, setIsCompleting] = useState(false);
   const [isConfirmingComplete, setIsConfirmingComplete] = useState(false);
 
-  const [additionalWorkNotes, setAdditionalWorkNotes] = useState(
-    booking.note || ""
-  );
-  const [additionalCosts, setAdditionalCosts] = useState(
-    booking.additionalCosts || 0
-  );
+  const [additionalWorkNotes, setAdditionalWorkNotes] = useState(booking.note || '');
+  const [additionalCosts, setAdditionalCosts] = useState(booking.additionalCosts || 0);
   const [displayCosts, setDisplayCosts] = useState(() =>
-    (booking.additionalCosts || 0).toString() === "0"
-      ? "0"
-      : new Intl.NumberFormat("id-ID").format(booking.additionalCosts || 0)
+    (booking.additionalCosts || 0).toString() === '0'
+      ? '0'
+      : new Intl.NumberFormat('id-ID').format(booking.additionalCosts || 0),
   );
 
   const handleCostChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    if (value === "") {
+    if (value === '') {
       setAdditionalCosts(0);
-      setDisplayCosts("");
+      setDisplayCosts('');
       return;
     }
-    const numericValue = parseInt(value.replace(/\./g, ""), 10);
+    const numericValue = parseInt(value.replace(/\./g, ''), 10);
     if (!isNaN(numericValue)) {
       setAdditionalCosts(numericValue);
-      setDisplayCosts(new Intl.NumberFormat("id-ID").format(numericValue));
+      setDisplayCosts(new Intl.NumberFormat('id-ID').format(numericValue));
     }
   };
 
   const handleCostBlur = () => {
-    if (displayCosts === "") setDisplayCosts("0");
+    if (displayCosts === '') setDisplayCosts('0');
   };
 
   const getFormId = () => {
     const formId = (booking as any).formId ?? (booking as any).form_id ?? null;
-    if (!formId)
-      throw new Error(
-        "form_id tidak ditemukan pada booking (cek mapping API)."
-      );
+    if (!formId) throw new Error('form_id tidak ditemukan pada booking (cek mapping API).');
     return Number(formId);
   };
 
-  const pushStatusToServer = async (
-    nextStatus: BookingStatus,
-    patch?: Partial<Booking>
-  ) => {
+  const pushStatusToServer = async (nextStatus: BookingStatus, patch?: Partial<Booking>) => {
     const formId = getFormId();
 
-    if (!formId) throw new Error("booking.id tidak valid untuk form_id.");
+    if (!formId) throw new Error('booking.id tidak valid untuk form_id.');
 
-    await updateBookingStatusOnServer(
-      formId,
-      nextStatus,
-      currentTechnicianId,
-      patch
-    );
+    await updateBookingStatusOnServer(formId, nextStatus, currentTechnicianId, patch);
 
     const updated: Booking = { ...booking, ...patch, status: nextStatus };
     onBookingUpdateLocal(updated);
@@ -156,18 +130,18 @@ const JobCard: React.FC<{
     const nowIso = new Date().toISOString();
 
     try {
-      if (status === "On Site") {
-        const uiMessage = simulateNotification("technician_on_the_way", {
+      if (status === 'On Site') {
+        const uiMessage = simulateNotification('technician_on_the_way', {
           ...booking,
           status,
           arrivalTime: nowIso,
         });
-        addNotification(uiMessage, "info");
+        addNotification(uiMessage, 'info');
         await pushStatusToServer(status, { arrival_time: nowIso });
         return;
       }
 
-      if (status === "In Progress") {
+      if (status === 'In Progress') {
         await pushStatusToServer(status, { start_time: nowIso });
         return;
       }
@@ -175,20 +149,14 @@ const JobCard: React.FC<{
       await pushStatusToServer(status);
     } catch (err: any) {
       console.error(err);
-      addNotification(
-        err?.message || "Gagal update status di server.",
-        "error"
-      );
+      addNotification(err?.message || 'Gagal update status di server.', 'error');
     }
   };
 
-  const handlePhotoUpload = async (
-    type: "arrival" | "before" | "after",
-    file: File
-  ) => {
+  const handlePhotoUpload = async (type: 'arrival' | 'before' | 'after', file: File) => {
     const formId = getFormId();
 
-    if (!formId) throw new Error("booking.id tidak valid untuk form_id.");
+    if (!formId) throw new Error('booking.id tidak valid untuk form_id.');
 
     const result = await uploadBookingPhoto(formId, type, file);
     const url = result?.url;
@@ -205,73 +173,61 @@ const JobCard: React.FC<{
   const executeCompleteJob = async () => {
     try {
       const now = new Date();
-      const startIso = booking.startTime || new Date().toISOString();
+      const startIso = booking.startTime;
       const startTime = new Date(startIso);
-      const duration = Math.round(
-        (now.getTime() - startTime.getTime()) / 60000
-      );
-
-      await pushStatusToServer("Completed", {
+      const duration = Math.round((now.getTime() - startTime.getTime()) / 60000);
+      await pushStatusToServer('Completed', {
         end_time: now.toISOString(),
-        work_duration_minutes: duration > 0 ? String(duration) : String(0),
+        work_duration_minutes: String(duration),
         note: additionalWorkNotes,
         additional_cost: additionalCosts,
       });
 
-      const uiMessage = simulateNotification("job_completed", {
+      const uiMessage = simulateNotification('job_completed', {
         ...booking,
-        status: "Completed",
+        status: 'Completed',
       } as any);
-      addNotification(uiMessage, "success");
+      addNotification(uiMessage, 'success');
 
       setIsCompleting(false);
       setIsConfirmingComplete(false);
     } catch (err: any) {
       console.error(err);
-      addNotification(
-        err?.message || "Gagal menyelesaikan pekerjaan.",
-        "error"
-      );
+      addNotification(err?.message || 'Gagal menyelesaikan pekerjaan.', 'error');
     }
   };
 
   const formatSchedule = () => {
-    const start = startDate.toLocaleDateString("id-ID", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
+    const start = startDate.toLocaleDateString('id-ID', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
     });
     if (!isMultiDay) return `${start} - ${booking.time}`;
-    const end = endDate.toLocaleDateString("id-ID", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
+    const end = endDate.toLocaleDateString('id-ID', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
     });
     return `${start} s/d ${end}`;
   };
 
   const renderAction = () => {
-    if (
-      !isJobActiveToday &&
-      booking.status !== "Completed" &&
-      booking.status !== "Cancelled"
-    ) {
+    if (!isJobActiveToday && booking.status !== 'Completed' && booking.status !== 'Cancelled') {
       return (
         <div className="mt-4 pt-4 border-t dark:border-slate-700 text-center">
-          <p className="font-semibold text-gray-500 dark:text-gray-400">
-            Tugas belum dimulai.
-          </p>
+          <p className="font-semibold text-gray-500 dark:text-gray-400">Tugas belum dimulai.</p>
         </div>
       );
     }
 
     switch (booking.status) {
-      case "Confirmed":
+      case 'Confirmed':
         if (!isStartDate) {
           return (
             <div className="mt-4 pt-4 border-t dark:border-slate-700 text-center">
               <p className="font-semibold text-gray-500 dark:text-gray-400">
-                Tugas dimulai pada {startDate.toLocaleDateString("id-ID")}
+                Tugas dimulai pada {startDate.toLocaleDateString('id-ID')}
               </p>
             </div>
           );
@@ -279,7 +235,7 @@ const JobCard: React.FC<{
         return (
           <div className="mt-4 pt-4 border-t dark:border-slate-700">
             <button
-              onClick={() => handleStatusUpdate("On Site")}
+              onClick={() => handleStatusUpdate('On Site')}
               className="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors"
             >
               Saya Sudah di Lokasi
@@ -287,25 +243,25 @@ const JobCard: React.FC<{
           </div>
         );
 
-      case "On Site":
+      case 'On Site':
         return (
           <div className="mt-4 pt-4 border-t dark:border-slate-700 space-y-4">
             <PhotoUpload
               label="Foto Tiba di Lokasi"
               photoUrlOrPath={booking.photos?.arrival}
-              onUploadFile={(f) => handlePhotoUpload("arrival", f)}
+              onUploadFile={(f) => handlePhotoUpload('arrival', f)}
             />
 
             {booking.photos?.arrival && (
               <PhotoUpload
                 label="Foto Sebelum Pengerjaan"
                 photoUrlOrPath={booking.photos?.before}
-                onUploadFile={(f) => handlePhotoUpload("before", f)}
+                onUploadFile={(f) => handlePhotoUpload('before', f)}
               />
             )}
 
             <button
-              onClick={() => handleStatusUpdate("In Progress")}
+              onClick={() => handleStatusUpdate('In Progress')}
               disabled={!booking.photos?.arrival || !booking.photos?.before}
               className="w-full bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-yellow-600 transition-colors disabled:bg-gray-400"
             >
@@ -314,7 +270,7 @@ const JobCard: React.FC<{
           </div>
         );
 
-      case "In Progress":
+      case 'In Progress':
         return (
           <div className="mt-4 pt-4 border-t dark:border-slate-700 space-y-4">
             {isEndDate ? (
@@ -332,21 +288,17 @@ const JobCard: React.FC<{
           </div>
         );
 
-      case "Completed":
+      case 'Completed':
         return (
           <div className="mt-4 pt-4 border-t dark:border-slate-700 text-center">
-            <p className="font-semibold text-green-600 dark:text-green-400">
-              Pekerjaan Selesai
-            </p>
+            <p className="font-semibold text-green-600 dark:text-green-400">Pekerjaan Selesai</p>
           </div>
         );
 
-      case "Cancelled":
+      case 'Cancelled':
         return (
           <div className="mt-4 pt-4 border-t dark:border-slate-700 text-center">
-            <p className="font-semibold text-red-600 dark:text-red-400">
-              Dibatalkan
-            </p>
+            <p className="font-semibold text-red-600 dark:text-red-400">Dibatalkan</p>
           </div>
         );
 
@@ -360,12 +312,8 @@ const JobCard: React.FC<{
       <div className="p-5">
         <div className="flex justify-between items-start">
           <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {booking.service}
-            </p>
-            <p className="font-bold text-lg text-gray-800 dark:text-white">
-              {booking.name}
-            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{booking.service}</p>
+            <p className="font-bold text-lg text-gray-800 dark:text-white">{booking.name}</p>
           </div>
           {isJobActiveToday && (
             <span className="text-xs font-bold bg-primary text-white px-2 py-1 rounded-full">
@@ -393,7 +341,7 @@ const JobCard: React.FC<{
             <PhotoUpload
               label="Foto Setelah Selesai"
               photoUrlOrPath={booking.photos?.after}
-              onUploadFile={(f) => handlePhotoUpload("after", f)}
+              onUploadFile={(f) => handlePhotoUpload('after', f)}
             />
 
             <div>
@@ -478,8 +426,8 @@ const JobCard: React.FC<{
 /* -------------------------------------------------------------------------- */
 
 type TechnicianJobsSectionProps = {
-  jobFilter: "upcoming" | "completed";
-  setJobFilter: React.Dispatch<React.SetStateAction<"upcoming" | "completed">>;
+  jobFilter: 'upcoming' | 'completed';
+  setJobFilter: React.Dispatch<React.SetStateAction<'upcoming' | 'completed'>>;
   refreshBookings: () => Promise<void>;
   categories: Record<string, Booking[]>;
   completedJobs: Booking[];
@@ -500,34 +448,31 @@ const TechnicianJobsSection: React.FC<TechnicianJobsSectionProps> = ({
 }) => {
   const entries = useMemo(
     () => Object.entries(categories) as Array<[string, Booking[]]>,
-    [categories]
+    [categories],
   );
 
-  const isUpcomingEmpty = useMemo(
-    () => entries.every(([, jobs]) => jobs.length === 0),
-    [entries]
-  );
+  const isUpcomingEmpty = useMemo(() => entries.every(([, jobs]) => jobs.length === 0), [entries]);
 
   return (
     <div>
       <div className="mb-6 flex items-center gap-3">
         <div className="inline-flex rounded-md shadow-sm bg-white dark:bg-slate-800 p-1">
           <button
-            onClick={() => setJobFilter("upcoming")}
+            onClick={() => setJobFilter('upcoming')}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              jobFilter === "upcoming"
-                ? "bg-primary text-white"
-                : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700"
+              jobFilter === 'upcoming'
+                ? 'bg-primary text-white'
+                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700'
             }`}
           >
             Akan Datang
           </button>
           <button
-            onClick={() => setJobFilter("completed")}
+            onClick={() => setJobFilter('completed')}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              jobFilter === "completed"
-                ? "bg-primary text-white"
-                : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700"
+              jobFilter === 'completed'
+                ? 'bg-primary text-white'
+                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700'
             }`}
           >
             Riwayat
@@ -542,7 +487,7 @@ const TechnicianJobsSection: React.FC<TechnicianJobsSectionProps> = ({
         </button>
       </div>
 
-      {jobFilter === "upcoming" &&
+      {jobFilter === 'upcoming' &&
         (isUpcomingEmpty ? (
           <div className="text-center py-20 bg-white dark:bg-slate-800 rounded-xl shadow-md">
             <h3 className="text-lg font-medium text-gray-900 dark:text-white">
@@ -569,12 +514,12 @@ const TechnicianJobsSection: React.FC<TechnicianJobsSectionProps> = ({
                     ))}
                   </div>
                 </div>
-              ) : null
+              ) : null,
             )}
           </div>
         ))}
 
-      {jobFilter === "completed" &&
+      {jobFilter === 'completed' &&
         (completedJobs.length > 0 ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {completedJobs.map((job) => (

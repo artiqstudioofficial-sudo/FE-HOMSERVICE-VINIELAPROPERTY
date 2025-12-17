@@ -2,7 +2,7 @@ import AOS from 'aos';
 import 'aos/dist/aos.css';
 import React, { Suspense, lazy, useEffect } from 'react';
 
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import Footer from './components/Footer';
 import Navbar from './components/Navbar';
@@ -171,11 +171,11 @@ const App: React.FC = () => {
   return (
     <ThemeProvider>
       <NotificationProvider>
-        <BrowserRouter>
+        <HashRouter>
           <AuthProvider>
             <AppRoutes />
           </AuthProvider>
-        </BrowserRouter>
+        </HashRouter>
       </NotificationProvider>
     </ThemeProvider>
   );
