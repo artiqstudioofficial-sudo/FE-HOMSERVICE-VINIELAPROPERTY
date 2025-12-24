@@ -96,6 +96,10 @@ export type ApiBookingItem = {
   lat: string;
   lng: string;
   note: string | null;
+  arrival_time: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  work_duration_minutes: string | null;
   additional_cost: string | null;
   arrive_photo: string | null;
   before_photo: string | null;
@@ -289,12 +293,12 @@ export async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
       lat: Number(row.lat),
       lng: Number(row.lng),
 
-      arrivalTime: null,
-      startTime: null,
-      endTime: null,
-      workDurationMinutes: 0,
+      arrival_time: row.arrival_time,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      work_duration_minutes: row.work_duration_minutes,
 
-      additionalCosts: row.additional_cost ? Number(row.additional_cost) || 0 : 0,
+      additional_cost: row.additional_cost ? Number(row.additional_cost) || 0 : 0,
       note: row.note || '',
       photos: {
         arrival: row.arrive_photo || undefined,
@@ -496,7 +500,9 @@ function normalizeAvailability(res: ApiAvailabilityResponse): Availability {
 }
 
 export async function fetchAvailabilityFromApi(): Promise<Availability> {
-  const res: any = await apiRequest(ADMIN_ENDPOINTS.availabilityGet, { method: 'GET' });
+  const res: any = await apiRequest(ADMIN_ENDPOINTS.availabilityGet, {
+    method: 'GET',
+  });
   return normalizeAvailability(res as ApiAvailabilityResponse);
 }
 
