@@ -1,5 +1,5 @@
 import { Plus, XCircle } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Service } from '../config/services';
 import { ServiceMasterCategory } from '../lib/api/admin';
 
@@ -19,12 +19,9 @@ const UNIT_OPTIONS: UnitPrice[] = ['unit', 'jam', 'kg', 'm²'];
 type PointPayload = { includes: string[]; excludes: string[] };
 
 function parsePoint(pointRaw: any): PointPayload {
-  // default kosong
   const empty: PointPayload = { includes: [], excludes: [] };
-
   if (!pointRaw) return empty;
 
-  // kalau backend sudah kasih object
   if (typeof pointRaw === 'object') {
     return {
       includes: Array.isArray(pointRaw.includes) ? pointRaw.includes.map(String) : [],
@@ -32,7 +29,6 @@ function parsePoint(pointRaw: any): PointPayload {
     };
   }
 
-  // kalau string JSON
   if (typeof pointRaw === 'string') {
     const s = pointRaw.trim();
     if (!s) return empty;
@@ -44,12 +40,10 @@ function parsePoint(pointRaw: any): PointPayload {
         excludes: Array.isArray(j?.excludes) ? j.excludes.map(String) : [],
       };
     } catch {
-      // fallback: kalau ternyata string biasa (bukan json) -> taruh ke includes
       return { includes: [s], excludes: [] };
     }
   }
 
-  // number dll -> kosong
   return empty;
 }
 
@@ -79,7 +73,6 @@ const ServiceFormModal: React.FC<Props> = ({
   const [durationHour, setDurationHour] = useState<string>('');
   const [isGuarantee, setIsGuarantee] = useState(false);
 
-  // ✅ Point list (Termasuk / Tidak Termasuk)
   const [includes, setIncludes] = useState<string[]>([]);
   const [excludes, setExcludes] = useState<string[]>([]);
   const [includeInput, setIncludeInput] = useState('');
@@ -89,15 +82,25 @@ const ServiceFormModal: React.FC<Props> = ({
 
   const categoryOptions = useMemo(() => serviceCategories, [serviceCategories]);
 
+  // ✅ biar init form cuma sekali per "sesi edit/add", bukan tiap close/open
+  const hydratedKeyRef = useRef<string>('');
+
   useEffect(() => {
+    // Kalau modal belum kebuka, jangan ngapa-ngapain (biar state tidak reset saat close)
     if (!isOpen) return;
+
+    // Tentukan "key sesi" -> beda serviceToEdit => re-hydrate
+    const key = serviceToEdit ? `edit:${serviceToEdit.id}` : 'add:new';
+    if (hydratedKeyRef.current === key) return; // sudah pernah hydrate untuk sesi ini
+
+    hydratedKeyRef.current = key;
 
     if (serviceToEdit) {
       setName(serviceToEdit.name ?? '');
       setPrice(
         typeof serviceToEdit.price === 'number'
           ? String(serviceToEdit.price)
-          : serviceToEdit.price ?? '',
+          : (serviceToEdit.price as any) ?? '',
       );
       setUnitPrice((serviceToEdit.unit_price as UnitPrice) || 'unit');
 
@@ -115,7 +118,6 @@ const ServiceFormModal: React.FC<Props> = ({
       const ig: any = (serviceToEdit as any).is_guarantee;
       setIsGuarantee(Boolean(Number(ig ?? 0)));
 
-      // ✅ parse point json dari field "point"
       const pointRaw: any = (serviceToEdit as any).point;
       const parsed = parsePoint(pointRaw);
       setIncludes(parsed.includes);
@@ -124,6 +126,7 @@ const ServiceFormModal: React.FC<Props> = ({
       setIncludeInput('');
       setExcludeInput('');
     } else {
+      // mode add (hanya reset ketika masuk sesi add baru)
       setName('');
       setPrice('');
       setUnitPrice('unit');
@@ -139,6 +142,24 @@ const ServiceFormModal: React.FC<Props> = ({
       setExcludeInput('');
     }
   }, [isOpen, serviceToEdit, categoryToEdit]);
+
+  // ✅ kalau parent ganti dari edit -> add / add -> edit, paksa hydrate lagi saat open berikutnya
+  useEffect(() => {
+    const key = serviceToEdit ? `edit:${serviceToEdit.id}` : 'add:new';
+    if (hydratedKeyRef.current && hydratedKeyRef.current !== key) {
+      hydratedKeyRef.current = '';
+    }
+  }, [serviceToEdit]);
+
+  // Optional: ESC to close (tanpa reset state)
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
 
   const handleChangeSelectCategory = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
@@ -188,9 +209,8 @@ const ServiceFormModal: React.FC<Props> = ({
       const categoryIdNum =
         selectedCategoryId !== ''
           ? Number(selectedCategoryId)
-          : serviceToEdit?.service_category ?? 0;
+          : (serviceToEdit as any)?.service_category ?? 0;
 
-      // ✅ simpan point sebagai JSON string ke kolom varchar "point"
       const pointJson = JSON.stringify({
         includes: uniqClean(includes),
         excludes: uniqClean(excludes),
@@ -203,12 +223,9 @@ const ServiceFormModal: React.FC<Props> = ({
         unit_price: unitPrice,
         service_category: categoryIdNum,
         category: categoryLabel.trim(),
-
         duration_minute: durationMinute.trim() || '',
         duration_hour: durationHour.trim() || '',
         is_guarantee: isGuarantee,
-
-        // ✅ point json string
         point: pointJson,
       } as Service;
 
@@ -218,10 +235,19 @@ const ServiceFormModal: React.FC<Props> = ({
     }
   };
 
-  if (!isOpen) return null;
-
+  // ✅ jangan return null saat close -> modal tetap hidup, cuma disembunyikan
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div
+      className={[
+        'fixed inset-0 z-50 flex items-center justify-center bg-black/40 transition-opacity duration-200',
+        isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none',
+      ].join(' ')}
+      aria-hidden={!isOpen}
+      onMouseDown={(e) => {
+        // klik backdrop utk close (opsional)
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-3xl">
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
@@ -359,7 +385,7 @@ const ServiceFormModal: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* ✅ POINT SECTION (sesuai gambar) */}
+          {/* ✅ POINT SECTION */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
             {/* Termasuk */}
             <div>

@@ -39,8 +39,6 @@
       };
     </script>
 
-
-
     <script type="importmap">
       {
         "imports": {
@@ -53,26 +51,12 @@
         }
       }
     </script>
-    <script type="module" crossorigin src="./index.tsx"></script>
+    <script type="module" crossorigin src="/index.tsx"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DvB2Xm2x.css" />
   </head>
   <body class="antialiased bg-white dark:bg-dark-bg">
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
     <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
-
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker
-            .register('/sw.js')
-            .then((registration) => {
-              console.log('SW registered: ', registration);
-            })
-            .catch((registrationError) => {
-              console.log('SW registration failed: ', registrationError);
-            });
-        });
-      }
-    </script>
   </body>
 </html>
