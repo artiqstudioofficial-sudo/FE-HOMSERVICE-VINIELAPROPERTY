@@ -221,7 +221,7 @@ const ContactFormSection: React.FC = () => {
   const [serviceLoading, setServiceLoading] = useState<boolean>(false);
 
   // ====== FIX: pastikan Google Maps JS ke-load (pakai key yang kamu minta) ======
-  const GOOGLE_KEY = 'AIzaSyC7j3bV-cPjjNceAzN4g0Oh4-6wU7VroLM';
+  const GOOGLE_KEY = 'AIzaSyDaNrspVq4phMSTDrNS2JSLS-pBGPU8WuQ';
   const [gmapsReady, setGmapsReady] = useState(false);
   const [gmapsLoadError, setGmapsLoadError] = useState<string | null>(null);
 
