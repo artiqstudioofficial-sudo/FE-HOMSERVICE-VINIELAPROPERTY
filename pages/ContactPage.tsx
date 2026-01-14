@@ -119,6 +119,54 @@ const ProgressIndicator: React.FC<{ currentStep: number }> = ({ currentStep }) =
 };
 
 /* -------------------------------------------------------------------------- */
+/*                      GOOGLE MAPS SCRIPT LOADER (FIX)                        */
+/* -------------------------------------------------------------------------- */
+
+declare global {
+  interface Window {
+    google?: any;
+  }
+}
+
+function loadGoogleMapsJs(apiKey: string) {
+  // sudah loaded?
+  if (window.google?.maps?.Geocoder) return Promise.resolve(true);
+
+  // sudah pernah inject script?
+  const existing = document.querySelector<HTMLScriptElement>('script[data-gmaps="1"]');
+  if (existing) {
+    // tunggu sampai siap
+    return new Promise<boolean>((resolve) => {
+      const t = setInterval(() => {
+        if (window.google?.maps?.Geocoder) {
+          clearInterval(t);
+          resolve(true);
+        }
+      }, 100);
+      setTimeout(() => {
+        clearInterval(t);
+        resolve(!!window.google?.maps?.Geocoder);
+      }, 12000);
+    });
+  }
+
+  return new Promise<boolean>((resolve) => {
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+      apiKey,
+    )}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    script.dataset.gmaps = '1';
+
+    script.onload = () => resolve(!!window.google?.maps?.Geocoder);
+    script.onerror = () => resolve(false);
+
+    document.head.appendChild(script);
+  });
+}
+
+/* -------------------------------------------------------------------------- */
 /*                             CONTACT FORM SECTION                           */
 /* -------------------------------------------------------------------------- */
 
@@ -126,7 +174,6 @@ const ContactFormSection: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  // masih pakai nama di query, nanti dipetakan ke id setelah services ke-load
   const initialServiceParam = searchParams.get('service') || '';
 
   const [step, setStep] = useState(1);
@@ -135,7 +182,6 @@ const ContactFormSection: React.FC = () => {
     name: '',
     whatsapp: '',
     address: '',
-    // sekarang ini menyimpan ID service (string)
     service: '',
     startDate: null as Date | null,
     endDate: null as Date | null,
@@ -174,6 +220,31 @@ const ContactFormSection: React.FC = () => {
   const [serviceError, setServiceError] = useState<string | null>(null);
   const [serviceLoading, setServiceLoading] = useState<boolean>(false);
 
+  // ====== FIX: pastikan Google Maps JS ke-load (pakai key yang kamu minta) ======
+  const GOOGLE_KEY = 'AIzaSyC7j3bV-cPjjNceAzN4g0Oh4-6wU7VroLM';
+  const [gmapsReady, setGmapsReady] = useState(false);
+  const [gmapsLoadError, setGmapsLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const ok = await loadGoogleMapsJs(GOOGLE_KEY);
+      if (!alive) return;
+      if (ok) {
+        setGmapsReady(true);
+        setGmapsLoadError(null);
+      } else {
+        setGmapsReady(false);
+        setGmapsLoadError(
+          'Google Maps JS gagal dimuat. Cek internet, adblock, atau API key restriction.',
+        );
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   /* -------------------------------------------------------------------------- */
   /*                           LOAD SERVICES FROM API                           */
   /* -------------------------------------------------------------------------- */
@@ -198,14 +269,16 @@ const ContactFormSection: React.FC = () => {
 
         setAllServicesData(categories);
 
-        // jika ada param ?service= (nama layanan), petakan ke ID
         if (initialServiceParam) {
           const matchByName = servicesFromApi.find(
             (s) => s.name.toLowerCase() === initialServiceParam.toLowerCase().trim(),
           );
 
           if (matchByName) {
-            setFormData((prev) => ({ ...prev, service: String(matchByName.id) }));
+            setFormData((prev) => ({
+              ...prev,
+              service: String(matchByName.id),
+            }));
           }
         }
       } catch (err: any) {
@@ -227,14 +300,12 @@ const ContactFormSection: React.FC = () => {
     [allServicesData],
   );
 
-  // pilih service berdasarkan ID
   const selectedServiceDetails = useMemo(() => {
     const id = Number(formData.service);
     if (!id) return undefined;
     return allServices.find((s) => Number(s.id) === id);
   }, [formData.service, allServices]);
 
-  // fallback (kalau Service belum punya durationDays)
   const durationDays = (selectedServiceDetails as any)?.durationDays || 1;
 
   /* -------------------------------------------------------------------------- */
@@ -282,7 +353,6 @@ const ContactFormSection: React.FC = () => {
     const newEndDate = new Date(date);
     newEndDate.setDate(newEndDate.getDate() + durationDays - 1);
 
-    // cek range full booked
     for (let d = new Date(date); d <= newEndDate; d.setDate(d.getDate() + 1)) {
       if (fullyBookedDates.has(formatDateToKey(d))) {
         setScheduleError(
@@ -296,7 +366,12 @@ const ContactFormSection: React.FC = () => {
       }
     }
 
-    setFormData((prev) => ({ ...prev, startDate: date, endDate: newEndDate, time: '' }));
+    setFormData((prev) => ({
+      ...prev,
+      startDate: date,
+      endDate: newEndDate,
+      time: '',
+    }));
   };
 
   const handleChange = (
@@ -342,47 +417,81 @@ const ContactFormSection: React.FC = () => {
     );
   };
 
+  /* -------------------------------------------------------------------------- */
+  /*                     FIX: MANUAL SEARCH VIA google.maps.Geocoder            */
+  /* -------------------------------------------------------------------------- */
   const handleSearchAddress = async () => {
-    if (!addressQuery.trim()) {
+    const q = addressQuery.trim();
+    if (!q) {
       setLocationMessage('Mohon masukkan alamat untuk dicari.');
       return;
     }
+
     setIsGeocoding(true);
     setLocationError('');
     setLocationMessage('');
     setErrors((prev) => ({ ...prev, location: undefined }));
 
-    // NOTE: kamu pakai env custom. Pastikan ini ada.
-    const apiKey =
-      (process as any)?.env?.API_KEY || (import.meta as any)?.env?.VITE_GOOGLE_MAPS_KEY;
-    if (!apiKey) {
-      console.error('Geocoding API Key is missing.');
-      setLocationMessage('Fitur pencarian alamat saat ini tidak tersedia.');
-      setIsGeocoding(false);
-      return;
-    }
-
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
-      addressQuery,
-    )}&key=${apiKey}`;
-
     try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Network response was not ok');
-      const data = await response.json();
-
-      if (data.status === 'OK' && data.results.length > 0) {
-        const { lat, lng } = data.results[0].geometry.location;
-        setLocation({ lat, lng });
-        setLocationMessage('Lokasi berhasil ditemukan dan ditandai di peta.');
-      } else {
-        setLocation(null);
-        setLocationMessage('Alamat tidak ditemukan. Coba gunakan alamat yang lebih spesifik.');
+      // Pastikan maps siap (script ke-load)
+      if (!gmapsReady) {
+        const ok = await loadGoogleMapsJs(GOOGLE_KEY);
+        setGmapsReady(ok);
+        if (!ok) {
+          throw new Error('Google Maps JS belum siap. Cek adblock / restriction / network.');
+        }
       }
-    } catch (error) {
-      console.error('Geocoding API error:', error);
+
+      const geocoder = new window.google.maps.Geocoder();
+
+      const result = await new Promise<any>((resolve, reject) => {
+        geocoder.geocode(
+          {
+            address: q,
+            region: 'ID',
+          },
+          (results: any, status: string) => {
+            if (status === 'OK' && results?.length) resolve(results[0]);
+            else {
+              // status penting: REQUEST_DENIED, ZERO_RESULTS, OVER_QUERY_LIMIT, INVALID_REQUEST
+              reject(new Error(`Geocoding gagal: ${status}`));
+            }
+          },
+        );
+      });
+
+      const loc = result.geometry.location;
+      const lat = typeof loc.lat === 'function' ? loc.lat() : loc.lat;
+      const lng = typeof loc.lng === 'function' ? loc.lng() : loc.lng;
+
+      if (typeof lat !== 'number' || typeof lng !== 'number') {
+        throw new Error('Koordinat tidak valid dari Google Maps.');
+      }
+
+      setLocation({ lat, lng });
+      setLocationMessage(`Lokasi berhasil ditemukan: ${result.formatted_address || q}`);
+    } catch (err: any) {
+      console.error('Manual geocode error:', err);
+
+      // tampilkan sebab paling umum
+      const msg = String(err?.message || '');
+      if (msg.includes('REQUEST_DENIED')) {
+        setLocationMessage(
+          'REQUEST_DENIED: API key kemungkinan belum enable Geocoding API / Maps JavaScript API, billing belum aktif, atau domain belum di-allow di key restriction.',
+        );
+      } else if (msg.includes('ZERO_RESULTS')) {
+        setLocationMessage(
+          "Alamat tidak ditemukan (ZERO_RESULTS). Coba tulis lebih spesifik, misal: 'Monas, Jakarta Pusat'.",
+        );
+      } else if (msg.includes('OVER_QUERY_LIMIT')) {
+        setLocationMessage('Kuota geocoding habis (OVER_QUERY_LIMIT). Coba lagi nanti.');
+      } else {
+        setLocationMessage(
+          err?.message || 'Terjadi kesalahan saat mencari alamat. Silakan coba lagi.',
+        );
+      }
+
       setLocation(null);
-      setLocationMessage('Terjadi kesalahan saat mencari alamat. Silakan coba lagi.');
     } finally {
       setIsGeocoding(false);
     }
@@ -415,7 +524,9 @@ const ContactFormSection: React.FC = () => {
   };
 
   const validateStep1 = (): boolean => {
-    const newErrors: Partial<Record<keyof typeof formData, string>> & { location?: string } = {};
+    const newErrors: Partial<Record<keyof typeof formData, string>> & {
+      location?: string;
+    } = {};
     const nameError = validateField('name', formData.name);
     if (nameError) newErrors.name = nameError;
 
@@ -460,9 +571,6 @@ const ContactFormSection: React.FC = () => {
     setStep((prev) => prev - 1);
   };
 
-  /* -------------------------------------------------------------------------- */
-  /*                     SUBMIT → API /api/v1/user/store-booking                */
-  /* -------------------------------------------------------------------------- */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -485,7 +593,6 @@ const ContactFormSection: React.FC = () => {
       return;
     }
 
-    // guard sederhana: kalau availability masih loading, jangan submit
     if (availabilityLoading) {
       addNotification('Sedang memuat slot jadwal. Coba lagi sebentar.', 'info');
       return;
@@ -526,7 +633,6 @@ const ContactFormSection: React.FC = () => {
 
       const serviceNameForDisplay = selectedServiceDetails?.name || initialServiceParam || '';
 
-      // booking lokal untuk notifikasi UI
       const newBooking: Booking = {
         id: Date.now(),
         name: formData.name,
@@ -542,9 +648,6 @@ const ContactFormSection: React.FC = () => {
         lng: location.lng,
       };
 
-      /* ---------------------- UPDATE AVAILABILITY (API) ---------------------- */
-
-      // ambil latest dari server (source of truth)
       const currentAvailability = await getAvailability();
 
       const currentBookedSlots = Array.isArray(currentAvailability.bookedSlots)
@@ -559,7 +662,6 @@ const ContactFormSection: React.FC = () => {
       const newBookedSlots = Array.from(new Set([...currentBookedSlots, slotKey]));
       let newFullyBookedDates = [...currentFully];
 
-      // kalau durasi > 1 hari → block rentang
       if (durationDays > 1 && formData.endDate) {
         const datesToBlock = new Set(newFullyBookedDates);
         for (
@@ -572,13 +674,11 @@ const ContactFormSection: React.FC = () => {
         newFullyBookedDates = Array.from(datesToBlock);
       }
 
-      // simpan ke server
       await saveAvailability({
         fullyBookedDates: newFullyBookedDates,
         bookedSlots: newBookedSlots,
       });
 
-      // update state UI
       setFullyBookedDates(new Set(newFullyBookedDates));
       setBookedSlots(new Set(newBookedSlots));
 
@@ -639,29 +739,23 @@ const ContactFormSection: React.FC = () => {
     <section className="py-24 bg-light-bg dark:bg-slate-900">
       <div className="container mx-auto px-6">
         <div className="flex justify-center">
-          <div
-            className="w-full max-w-4xl bg-white dark:bg-slate-800 p-6 md:p-8 rounded-2xl shadow-xl"
-            data-aos="fade-up"
-          >
+          <div className="w-full max-w-4xl bg-white dark:bg-slate-800 p-6 md:p-8 rounded-2xl shadow-xl">
             <h2 className="text-2xl md:text-3xl font-bold font-poppins text-gray-800 dark:text-white mb-6 text-center">
               Formulir Pemesanan Layanan
             </h2>
 
             <ProgressIndicator currentStep={step} />
 
-            {/* Info error layanan */}
             {serviceError && (
               <div className="mb-4 text-center text-sm text-red-500">{serviceError}</div>
             )}
 
-            {/* Info error availability */}
             {availabilityError && (
               <div className="mb-4 text-center text-sm text-red-500">{availabilityError}</div>
             )}
 
             <form onSubmit={handleSubmit} noValidate>
               <div className="min-h-[420px] py-4">
-                {/* STEP 1 */}
                 {step === 1 && (
                   <div className="space-y-6 animate-fade-in">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -750,7 +844,7 @@ const ContactFormSection: React.FC = () => {
                           type="button"
                           onClick={handleUseCurrentLocation}
                           disabled={isFetchingLocation || isGeocoding}
-                          className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-slate-800 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 disabled:opacity-50"
+                          className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-slate-800 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600 disabled:opacity-50"
                         >
                           {isFetchingLocation ? (
                             <svg
@@ -812,12 +906,27 @@ const ContactFormSection: React.FC = () => {
                           Gunakan jika memesan untuk lokasi lain (misal: rumah orang tua).
                         </p>
 
+                        {/* status maps loader */}
+                        {!gmapsReady && (
+                          <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-2">
+                            Memuat Google Maps...
+                          </p>
+                        )}
+                        {gmapsLoadError && (
+                          <p className="text-xs text-red-500 mb-2">{gmapsLoadError}</p>
+                        )}
+
                         <div className="flex items-center gap-2 mt-1">
                           <input
                             type="text"
                             value={addressQuery}
                             onChange={(e) => setAddressQuery(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSearchAddress()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSearchAddress();
+                              }
+                            }}
                             placeholder="Contoh: Monas, Jakarta Pusat"
                             className="block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
                           />
@@ -854,20 +963,20 @@ const ContactFormSection: React.FC = () => {
                             <span>{isGeocoding ? 'Mencari...' : 'Cari'}</span>
                           </button>
                         </div>
+
+                        {locationMessage && (
+                          <p
+                            className={`text-xs mt-2 ${
+                              location ? 'text-green-600 dark:text-green-400' : 'text-red-500'
+                            }`}
+                          >
+                            {locationMessage}
+                          </p>
+                        )}
                       </div>
 
                       {errors.location && !locationError && !locationMessage && (
                         <p className="text-red-500 text-xs mt-2">{errors.location}</p>
-                      )}
-
-                      {locationMessage && (
-                        <p
-                          className={`text-xs mt-2 ${
-                            location ? 'text-green-600 dark:text-green-400' : 'text-red-500'
-                          }`}
-                        >
-                          {locationMessage}
-                        </p>
                       )}
 
                       {location && (
