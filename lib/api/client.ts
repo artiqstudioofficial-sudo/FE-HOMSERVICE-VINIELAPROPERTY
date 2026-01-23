@@ -29,7 +29,7 @@ function buildUrl(path: string, baseUrl?: string) {
 
 export async function apiRequest<T = any>(
   path: string,
-  init: ApiRequestInit = {}
+  init: ApiRequestInit = {},
 ): Promise<T> {
   const url = buildUrl(path, init.baseUrl);
 
@@ -43,7 +43,7 @@ export async function apiRequest<T = any>(
   });
 
   const isJson = (res.headers.get("content-type") || "").includes(
-    "application/json"
+    "application/json",
   );
   const payload = isJson
     ? await res.json().catch(() => null)

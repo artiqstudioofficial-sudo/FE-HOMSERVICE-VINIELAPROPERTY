@@ -1,6 +1,6 @@
 // components/admin/modals/TechnicianFormModal.tsx
-import { X } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import { X } from "lucide-react";
+import React, { useEffect, useState } from "react";
 
 type TechnicianFormModalProps = {
   isOpen: boolean;
@@ -26,37 +26,41 @@ const TechnicianFormModal: React.FC<TechnicianFormModalProps> = ({
     if (isOpen) {
       const defaultRole =
         technicianToEdit?.role ||
-        roles.find((r) => r.name === 'technician')?.name ||
+        roles.find((r) => r.name === "technician")?.name ||
         roles[0]?.name ||
-        '';
+        "";
 
       setFormData(
         technicianToEdit
-          ? { ...technicianToEdit, password: '' }
-          : { name: '', username: '', role: defaultRole, password: '' },
+          ? { ...technicianToEdit, password: "" }
+          : { name: "", username: "", role: defaultRole, password: "" },
       );
       setErrors({});
     }
   }, [isOpen, technicianToEdit, roles]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+  ) => {
     const { name, value } = e.target;
     setFormData((prev: any) => ({ ...prev, [name]: value }));
     if (errors[name]) {
-      setErrors((prev) => ({ ...prev, [name]: '' }));
+      setErrors((prev) => ({ ...prev, [name]: "" }));
     }
   };
 
   const validate = () => {
     const newErrors: { [key: string]: string } = {};
-    if (!formData.name?.trim()) newErrors.name = 'Nama wajib diisi.';
-    if (!formData.username?.trim()) newErrors.username = 'Username wajib diisi.';
-    if (!formData.role?.trim()) newErrors.role = 'Peran wajib diisi.';
+    if (!formData.name?.trim()) newErrors.name = "Nama wajib diisi.";
+    if (!formData.username?.trim())
+      newErrors.username = "Username wajib diisi.";
+    if (!formData.role?.trim()) newErrors.role = "Peran wajib diisi.";
 
     if (!technicianToEdit) {
-      if (!formData.password?.trim()) newErrors.password = 'Password wajib diisi untuk user baru.';
+      if (!formData.password?.trim())
+        newErrors.password = "Password wajib diisi untuk user baru.";
       if (existingUsernames.includes(formData.username!.trim())) {
-        newErrors.username = 'Username sudah digunakan.';
+        newErrors.username = "Username sudah digunakan.";
       }
     }
 
@@ -85,7 +89,7 @@ const TechnicianFormModal: React.FC<TechnicianFormModalProps> = ({
         <form onSubmit={handleSubmit}>
           <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-slate-700">
             <h2 className="text-2xl font-bold font-poppins text-gray-800 dark:text-white">
-              {technicianToEdit ? 'Edit User' : 'Tambah User Baru'}
+              {technicianToEdit ? "Edit User" : "Tambah User Baru"}
             </h2>
             <button
               type="button"
@@ -104,11 +108,13 @@ const TechnicianFormModal: React.FC<TechnicianFormModalProps> = ({
               <input
                 type="text"
                 name="name"
-                value={formData.name || ''}
+                value={formData.name || ""}
                 onChange={handleChange}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
               />
-              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+              {errors.name && (
+                <p className="text-red-500 text-xs mt-1">{errors.name}</p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -119,12 +125,14 @@ const TechnicianFormModal: React.FC<TechnicianFormModalProps> = ({
                 <input
                   type="text"
                   name="username"
-                  value={formData.username || ''}
+                  value={formData.username || ""}
                   onChange={handleChange}
                   readOnly={!!technicianToEdit}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary read-only:bg-gray-100 dark:read-only:bg-slate-600"
                 />
-                {errors.username && <p className="text-red-500 text-xs mt-1">{errors.username}</p>}
+                {errors.username && (
+                  <p className="text-red-500 text-xs mt-1">{errors.username}</p>
+                )}
               </div>
 
               <div>
@@ -133,7 +141,7 @@ const TechnicianFormModal: React.FC<TechnicianFormModalProps> = ({
                 </label>
                 <select
                   name="role"
-                  value={formData.role || ''}
+                  value={formData.role || ""}
                   onChange={handleChange}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
                 >
@@ -144,7 +152,9 @@ const TechnicianFormModal: React.FC<TechnicianFormModalProps> = ({
                     </option>
                   ))}
                 </select>
-                {errors.role && <p className="text-red-500 text-xs mt-1">{errors.role}</p>}
+                {errors.role && (
+                  <p className="text-red-500 text-xs mt-1">{errors.role}</p>
+                )}
               </div>
             </div>
 
@@ -155,11 +165,13 @@ const TechnicianFormModal: React.FC<TechnicianFormModalProps> = ({
               <input
                 type="password"
                 name="password"
-                value={formData.password || ''}
+                value={formData.password || ""}
                 onChange={handleChange}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
               />
-              {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+              {errors.password && (
+                <p className="text-red-500 text-xs mt-1">{errors.password}</p>
+              )}
               {technicianToEdit && (
                 <p className="text-xs text-gray-400 mt-1">
                   Kosongkan jika tidak ingin mengubah password.
