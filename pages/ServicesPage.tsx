@@ -1,12 +1,12 @@
 import { Clock, ShieldCheck } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ServiceDetailModal from '../components/ServiceDetailModal';
 import { Service, serviceIcons } from '../config/services';
 import { fetchServicesFromApi } from '../lib/api/admin';
 
 /* -------------------------------------------------------------------------- */
-/*                          TIPE GROUPING KATEGORI LOCAL                      */
+/*                          TIPE GROUPING KATEGORI                             */
 /* -------------------------------------------------------------------------- */
 
 type ServiceCategoryGroup = {
@@ -29,7 +29,7 @@ const ServicesHero: React.FC = () => (
       />
     </div>
     <div className="relative container mx-auto px-6 py-32 text-center text-white">
-      <h1 className="text-4xl md:text-5xl font-bold font-poppins leading-tight" data-aos="fade-up">
+      <h1 className="text-4xl md:text-5xl font-bold font-poppins leading-tight">
         Layanan Lengkap Untuk Semua Kebutuhan Rumah Anda
       </h1>
     </div>
@@ -60,48 +60,32 @@ const formatPrice = (price: number | string): string => {
 };
 
 /* -------------------------------------------------------------------------- */
-/*                          ALL SERVICES (PAKAI API)                          */
+/*                          ALL SERVICES + SEARCH LOKAL                        */
 /* -------------------------------------------------------------------------- */
 
 const AllServicesSection: React.FC = () => {
   const [selectedService, setSelectedService] = useState<Service | null>(null);
-  const [allServicesData, setAllServicesData] = useState<ServiceCategoryGroup[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // raw data dari API (flat)
+  const [rawServices, setRawServices] = useState<Service[]>([]);
+
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // search
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     const loadServices = async () => {
       try {
         setIsLoading(true);
         setError(null);
-
-        // Ambil dari API /admin/service-list
-        const servicesFromApi = await fetchServicesFromApi();
-
-        // Group by category (pakai field "category" dari API)
-        const byCategory: Record<string, Service[]> = {};
-        servicesFromApi.forEach((service) => {
-          const categoryName = service.category || 'Lainnya';
-          if (!byCategory[categoryName]) {
-            byCategory[categoryName] = [];
-          }
-          byCategory[categoryName].push(service);
-        });
-
-        const categories: ServiceCategoryGroup[] = Object.entries(byCategory).map(
-          ([category, services]) => ({
-            category,
-            services,
-          }),
-        );
-
-        setAllServicesData(categories);
-      } catch (err: any) {
-        console.error('Gagal memuat layanan dari API:', err);
-        setError(
-          err?.message || 'Gagal memuat data layanan dari server. Silakan coba beberapa saat lagi.',
-        );
-        setAllServicesData([]);
+        const data = await fetchServicesFromApi();
+        setRawServices(Array.isArray(data) ? data : []);
+      } catch (e: any) {
+        console.error(e);
+        setError(e?.message || 'Gagal memuat data layanan');
+        setRawServices([]);
       } finally {
         setIsLoading(false);
       }
@@ -110,88 +94,160 @@ const AllServicesSection: React.FC = () => {
     loadServices();
   }, []);
 
+  /* -------------------------- SEARCH BLOB BUILDER -------------------------- */
+  const buildSearchBlob = (s: Service) => {
+    const pointAny: any = (s as any).point;
+
+    let includes: string[] = [];
+    let excludes: string[] = [];
+
+    try {
+      if (typeof pointAny === 'string') {
+        const j = JSON.parse(pointAny);
+        includes = Array.isArray(j?.includes) ? j.includes.map(String) : [];
+        excludes = Array.isArray(j?.excludes) ? j.excludes.map(String) : [];
+      } else if (typeof pointAny === 'object' && pointAny) {
+        includes = Array.isArray(pointAny?.includes) ? pointAny.includes.map(String) : [];
+        excludes = Array.isArray(pointAny?.excludes) ? pointAny.excludes.map(String) : [];
+      }
+    } catch {
+      if (typeof pointAny === 'string') includes = [pointAny];
+    }
+
+    return [
+      s.name,
+      s.category,
+      s.unit_price,
+      s.price,
+      (s as any).duration_minute,
+      (s as any).duration_hour,
+      (s as any).is_guarantee,
+      (s as any).icon,
+      ...includes,
+      ...excludes,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+  };
+
+  /* ----------------------------- FILTER RESULT ----------------------------- */
+  const filteredServices = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rawServices;
+
+    const terms = q.split(/\s+/).filter(Boolean);
+
+    return rawServices.filter((s) => {
+      const blob = buildSearchBlob(s);
+      return terms.every((t) => blob.includes(t));
+    });
+  }, [rawServices, query]);
+
+  /* --------------------------- GROUP BY CATEGORY ---------------------------- */
+  const groupedServices: ServiceCategoryGroup[] = useMemo(() => {
+    const map: Record<string, Service[]> = {};
+    filteredServices.forEach((s) => {
+      const cat = s.category || 'Lainnya';
+      if (!map[cat]) map[cat] = [];
+      map[cat].push(s);
+    });
+
+    return Object.entries(map).map(([category, services]) => ({
+      category,
+      services,
+    }));
+  }, [filteredServices]);
+
   return (
     <section className="py-24 bg-light-bg dark:bg-slate-900">
       <div className="container mx-auto px-6">
-        <div className="text-center mb-16" data-aos="fade-up">
+        <div className="text-center mb-10">
           <h2 className="text-3xl md:text-4xl font-bold font-poppins text-gray-800 dark:text-white">
             Semua Layanan Kami
           </h2>
           <p className="max-w-2xl mx-auto text-lg text-secondary dark:text-slate-300 mt-4">
-            Temukan solusi yang tepat untuk setiap kebutuhan perawatan dan perbaikan rumah Anda.
-            Klik layanan untuk detail.
+            Cari berdasarkan nama layanan, kategori, harga, durasi, garansi, atau detail lainnya.
           </p>
         </div>
 
-        {/* Loading & Error State */}
-        {isLoading && (
-          <div className="text-center text-secondary dark:text-slate-300">
-            Memuat daftar layanan...
+        {/* SEARCH */}
+        <div className="max-w-2xl mx-auto mb-12">
+          <div className="relative">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Cari layanan (contoh: AC, garansi, 1 jam, plumbing, murah...)"
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 pr-24 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            {query && (
+              <button
+                onClick={() => setQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            {query
+              ? `Menampilkan ${filteredServices.length} dari ${rawServices.length} layanan`
+              : `Total layanan: ${rawServices.length}`}
+          </div>
+        </div>
+
+        {/* STATE */}
+        {isLoading && <div className="text-center">Memuat layanan...</div>}
+        {error && <div className="text-center text-red-500">{error}</div>}
+        {!isLoading && !error && rawServices.length === 0 && (
+          <div className="text-center">Belum ada layanan.</div>
+        )}
+        {!isLoading && !error && rawServices.length > 0 && filteredServices.length === 0 && (
+          <div className="text-center">
+            Tidak ada layanan yang cocok dengan pencarian <b>{query}</b>
           </div>
         )}
 
-        {error && !isLoading && <div className="text-center text-red-500 mb-8">{error}</div>}
-
-        {!isLoading && !error && allServicesData.length === 0 && (
-          <div className="text-center text-secondary dark:text-slate-300">
-            Belum ada layanan yang tersedia.
-          </div>
-        )}
-
+        {/* RENDER */}
         {!isLoading &&
           !error &&
-          allServicesData.map((categoryData, index) => (
-            <div key={categoryData.category} className={index > 0 ? 'mt-16' : ''}>
-              <h3
-                className="text-2xl font-bold font-poppins text-gray-800 dark:text-white mb-8"
-                data-aos="fade-up"
-              >
-                {categoryData.category}
+          groupedServices.map((group, idx) => (
+            <div key={group.category} className={idx ? 'mt-16' : ''}>
+              <h3 className="text-2xl font-bold mb-8 text-gray-800 dark:text-white">
+                {group.category}
               </h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {categoryData.services.map((service, serviceIndex) => (
+                {group.services.map((service, i) => (
                   <button
+                    key={service.id ?? i}
                     onClick={() => setSelectedService(service)}
-                    key={service.id ?? service.name}
-                    className="group relative bg-white dark:bg-slate-800 p-6 rounded-xl shadow-lg hover:shadow-primary/20 hover:-translate-y-2 border border-transparent hover:border-primary/50 transition-all duration-300 flex flex-col text-center"
-                    data-aos="fade-up"
-                    data-aos-delay={50 * serviceIndex}
-                    aria-label={`Lihat detail untuk ${service.name}`}
+                    className="group relative bg-white dark:bg-slate-800 p-6 rounded-xl shadow-lg hover:-translate-y-2 transition-all"
                   >
-                    {/* Garansi dari backend: is_guarantee */}
-                    {(service as any).is_guarantee && (
-                      <div className="absolute top-3 right-3 flex items-center gap-1 text-xs bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-400 px-2 py-0.5 rounded-full font-semibold z-10">
+                    {Number(service.is_guarantee) === 1 && (
+                      <div className="absolute top-3 right-3 flex items-center gap-1 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
                         <ShieldCheck size={14} />
-                        <span>Garansi</span>
+                        Garansi
                       </div>
                     )}
 
-                    <div className="flex-grow flex flex-col items-center">
-                      <div className="text-primary mb-4 transition-transform duration-300 group-hover:scale-110">
-                        {serviceIcons[(service as any).icon] || serviceIcons['Wrench']}
+                    <div className="flex flex-col items-center text-center">
+                      <div className="text-primary mb-4">
+                        {serviceIcons[service.icon] || serviceIcons['Wrench']}
                       </div>
-                      <h4 className="font-semibold text-gray-800 dark:text-white mb-2 min-h-[48px] flex items-center justify-center">
-                        {service.name}
-                      </h4>
-                      <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1.5">
-                        <Clock size={14} className="flex-shrink-0" />
-                        <span>
-                          Estimasi{' '}
-                          {formatDuration(
-                            (service as any).duration_minute ?? (service as any).duration ?? 0,
-                          )}
-                        </span>
+                      <h4 className="font-semibold mb-2">{service.name}</h4>
+                      <div className="text-sm text-gray-500 flex items-center gap-1">
+                        <Clock size={14} />
+                        Estimasi {formatDuration(parseInt(service.duration_minute) ?? 0)}
                       </div>
                     </div>
 
-                    <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-700 w-full">
-                      <p className="text-xs text-gray-400 dark:text-gray-500">Mulai dari</p>
+                    <div className="mt-4 pt-4 border-t">
+                      <p className="text-xs text-gray-400">Mulai dari</p>
                       <p className="text-xl font-bold text-primary">
                         {formatPrice(service.price)}
-                        <span className="text-sm font-normal text-secondary dark:text-slate-300">
-                          /{((service as any).unit_price ?? (service as any).priceUnit) || 'unit'}
-                        </span>
+                        <span className="text-sm font-normal">/{service.unit_price || 'unit'}</span>
                       </p>
                     </div>
                   </button>
@@ -199,185 +255,45 @@ const AllServicesSection: React.FC = () => {
               </div>
             </div>
           ))}
-      </div>
 
-      <ServiceDetailModal service={selectedService} onClose={() => setSelectedService(null)} />
-    </section>
-  );
-};
-
-/* -------------------------------------------------------------------------- */
-/*                             PRICING INFO SECTION                           */
-/* -------------------------------------------------------------------------- */
-
-const PricingInfoSection: React.FC = () => {
-  const principles = [
-    {
-      title: 'Harga Sesuai Layanan',
-      description:
-        'Setiap pekerjaan memiliki standar harga yang jelas sesuai dengan jenis dan tingkat kesulitannya.',
-    },
-    {
-      title: 'Estimasi Biaya di Awal',
-      description:
-        'Untuk pekerjaan kompleks, tim kami akan melakukan survei dan memberikan estimasi biaya transparan sebelum pengerjaan.',
-    },
-    {
-      title: 'Tanpa Biaya Tersembunyi',
-      description:
-        'Total yang Anda bayar adalah total yang telah kita setujui bersama. Tidak ada biaya siluman.',
-    },
-  ];
-
-  return (
-    <section className="py-24 bg-white dark:bg-dark-bg">
-      <div className="container mx-auto px-6 text-center">
-        <h2
-          className="text-3xl md:text-4xl font-bold font-poppins mb-4 text-gray-800 dark:text-white"
-          data-aos="fade-up"
-        >
-          Harga Transparan & Terjangkau
-        </h2>
-        <p
-          className="max-w-3xl mx-auto text-lg text-secondary dark:text-slate-300 mb-16"
-          data-aos="fade-up"
-          data-aos-delay="100"
-        >
-          Kami percaya pada transparansi penuh. Harga untuk setiap layanan akan diinformasikan di
-          awal, disesuaikan dengan kebutuhan dan kompleksitas pekerjaan Anda.
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {principles.map((principle, index) => (
-            <div
-              key={principle.title}
-              className="bg-light-bg dark:bg-slate-800 p-8 rounded-xl shadow-lg border-t-4 border-primary"
-              data-aos="fade-up"
-              data-aos-delay={100 * (index + 1)}
-            >
-              <div className="inline-block bg-primary-light dark:bg-slate-700 p-3 rounded-full mb-6">
-                <svg
-                  className="w-6 h-6 text-primary"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold font-poppins mb-2 text-gray-800 dark:text-white">
-                {principle.title}
-              </h3>
-              <p className="text-secondary dark:text-slate-300">{principle.description}</p>
-            </div>
-          ))}
-        </div>
-        <div className="mt-16" data-aos="fade-up" data-aos-delay="400">
-          <Link
-            to="/contact"
-            className="bg-primary text-white font-bold px-8 py-3 rounded-full hover:bg-primary-dark transition-all duration-300 text-lg"
-          >
-            Dapatkan Estimasi Biaya
-          </Link>
-        </div>
+        <ServiceDetailModal service={selectedService} onClose={() => setSelectedService(null)} />
       </div>
     </section>
   );
 };
 
 /* -------------------------------------------------------------------------- */
-/*                                FAQ SECTION                                 */
+/*                             PRICING INFO                                   */
 /* -------------------------------------------------------------------------- */
 
-const FaqItem: React.FC<{ question: string; answer: string }> = ({ question, answer }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  return (
-    <div className="border-b border-gray-200 dark:border-gray-700 py-4">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full text-left flex justify-between items-center focus:outline-none group"
-        aria-expanded={isOpen}
-      >
-        <span className="text-lg font-semibold text-secondary dark:text-slate-200 group-hover:text-primary transition-colors">
-          {question}
-        </span>
-        <div className="p-1 rounded-full bg-primary-light dark:bg-slate-700">
-          <svg
-            className={`w-5 h-5 text-primary transform transition-transform duration-300 ${
-              isOpen ? 'rotate-180' : ''
-            }`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M19 9l-7 7-7-7"
-            ></path>
-          </svg>
-        </div>
-      </button>
-      <div
-        className={`overflow-hidden transition-all duration-500 ease-in-out ${
-          isOpen ? 'max-h-96 mt-4' : 'max-h-0'
-        }`}
-      >
-        <p className="text-gray-600 dark:text-slate-300 pr-6">{answer}</p>
-      </div>
+const PricingInfoSection: React.FC = () => (
+  <section className="py-24 bg-white dark:bg-dark-bg">
+    <div className="container mx-auto px-6 text-center">
+      <h2 className="text-3xl font-bold mb-6">Harga Transparan & Terjangkau</h2>
+      <Link to="/contact" className="bg-primary text-white px-8 py-3 rounded-full font-bold">
+        Dapatkan Estimasi Biaya
+      </Link>
     </div>
-  );
-};
-
-const FaqSection: React.FC = () => {
-  const faqs = [
-    {
-      q: 'Apakah ada garansi pekerjaan?',
-      a: 'Ya, kami memberikan garansi 30 hari untuk layanan perbaikan tertentu seperti perbaikan AC dan plumbing. Garansi mencakup pengerjaan ulang jika masalah yang sama timbul kembali. Syarat dan ketentuan berlaku.',
-    },
-    {
-      q: 'Apakah teknisi datang ke rumah?',
-      a: 'Tentu saja. Semua layanan kami dirancang untuk dikerjakan langsung di lokasi Anda untuk kenyamanan maksimal.',
-    },
-    {
-      q: 'Apakah bisa jadwal rutin mingguan?',
-      a: 'Ya, kami menyediakan layanan terjadwal baik mingguan, dua mingguan, maupun bulanan. Hubungi kami untuk penawaran khusus.',
-    },
-    {
-      q: 'Pembayaran via apa saja?',
-      a: 'Kami menerima berbagai metode pembayaran, termasuk transfer bank, kartu kredit/debit, dan dompet digital.',
-    },
-  ];
-  return (
-    <section className="py-24 bg-light-bg dark:bg-slate-900">
-      <div className="container mx-auto px-6 max-w-4xl">
-        <div className="text-center mb-12" data-aos="fade-up">
-          <h2 className="text-3xl font-bold font-poppins text-gray-800 dark:text-white">
-            Pertanyaan Umum
-          </h2>
-        </div>
-        <div
-          className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-lg"
-          data-aos="fade-up"
-          data-aos-delay="100"
-        >
-          {faqs.map((faq) => (
-            <FaqItem key={faq.q} question={faq.q} answer={faq.a} />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-};
+  </section>
+);
 
 /* -------------------------------------------------------------------------- */
-/*                               MAIN PAGE EXPORT                             */
+/*                                   FAQ                                      */
+/* -------------------------------------------------------------------------- */
+
+const FaqSection: React.FC = () => (
+  <section className="py-24 bg-light-bg dark:bg-slate-900">
+    <div className="container mx-auto px-6 max-w-4xl text-center">
+      <h2 className="text-3xl font-bold mb-8">Pertanyaan Umum</h2>
+      <p className="text-secondary dark:text-slate-300">
+        Hubungi kami jika masih ada pertanyaan terkait layanan.
+      </p>
+    </div>
+  </section>
+);
+
+/* -------------------------------------------------------------------------- */
+/*                                MAIN EXPORT                                 */
 /* -------------------------------------------------------------------------- */
 
 const ServicesPage: React.FC = () => {

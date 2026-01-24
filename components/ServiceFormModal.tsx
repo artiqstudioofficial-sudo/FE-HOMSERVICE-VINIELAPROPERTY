@@ -66,8 +66,11 @@ const ServiceFormModal: React.FC<Props> = ({
   const [price, setPrice] = useState<string>('');
   const [unitPrice, setUnitPrice] = useState<UnitPrice>('unit');
 
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  // ✅ ADD: kategori manual ketik (nama)
   const [categoryLabel, setCategoryLabel] = useState<string>('');
+
+  // ✅ EDIT: kategori wajib pilih existing (id)
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
 
   const [durationMinute, setDurationMinute] = useState<string>('');
   const [durationHour, setDurationHour] = useState<string>('');
@@ -82,16 +85,19 @@ const ServiceFormModal: React.FC<Props> = ({
 
   const categoryOptions = useMemo(() => serviceCategories, [serviceCategories]);
 
-  // ✅ biar init form cuma sekali per "sesi edit/add", bukan tiap close/open
+  // ✅ suggestion untuk input kategori (ADD only)
+  const categoryNameSuggestions = useMemo(() => {
+    return uniqClean(serviceCategories.map((c) => String(c.name)));
+  }, [serviceCategories]);
+
+  // ✅ biar init form cuma sekali per "sesi edit/add"
   const hydratedKeyRef = useRef<string>('');
 
   useEffect(() => {
-    // Kalau modal belum kebuka, jangan ngapa-ngapain (biar state tidak reset saat close)
     if (!isOpen) return;
 
-    // Tentukan "key sesi" -> beda serviceToEdit => re-hydrate
     const key = serviceToEdit ? `edit:${serviceToEdit.id}` : 'add:new';
-    if (hydratedKeyRef.current === key) return; // sudah pernah hydrate untuk sesi ini
+    if (hydratedKeyRef.current === key) return;
 
     hydratedKeyRef.current = key;
 
@@ -100,14 +106,17 @@ const ServiceFormModal: React.FC<Props> = ({
       setPrice(
         typeof serviceToEdit.price === 'number'
           ? String(serviceToEdit.price)
-          : (serviceToEdit.price as any) ?? '',
+          : ((serviceToEdit.price as any) ?? ''),
       );
       setUnitPrice((serviceToEdit.unit_price as UnitPrice) || 'unit');
 
-      setSelectedCategoryId(
-        serviceToEdit.service_category ? String(serviceToEdit.service_category) : '',
-      );
+      // ✅ EDIT: set kategori id existing
+      const existingCatId = serviceToEdit.service_category
+        ? String(serviceToEdit.service_category)
+        : '';
+      setSelectedCategoryId(existingCatId);
 
+      // ✅ untuk display (nama)
       setCategoryLabel(categoryToEdit || serviceToEdit.category || '');
 
       const dm: any = (serviceToEdit as any).duration_minute;
@@ -126,12 +135,14 @@ const ServiceFormModal: React.FC<Props> = ({
       setIncludeInput('');
       setExcludeInput('');
     } else {
-      // mode add (hanya reset ketika masuk sesi add baru)
+      // ADD
       setName('');
       setPrice('');
       setUnitPrice('unit');
-      setSelectedCategoryId('');
+
       setCategoryLabel('');
+      setSelectedCategoryId('');
+
       setDurationMinute('');
       setDurationHour('');
       setIsGuarantee(false);
@@ -143,7 +154,6 @@ const ServiceFormModal: React.FC<Props> = ({
     }
   }, [isOpen, serviceToEdit, categoryToEdit]);
 
-  // ✅ kalau parent ganti dari edit -> add / add -> edit, paksa hydrate lagi saat open berikutnya
   useEffect(() => {
     const key = serviceToEdit ? `edit:${serviceToEdit.id}` : 'add:new';
     if (hydratedKeyRef.current && hydratedKeyRef.current !== key) {
@@ -151,7 +161,6 @@ const ServiceFormModal: React.FC<Props> = ({
     }
   }, [serviceToEdit]);
 
-  // Optional: ESC to close (tanpa reset state)
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -161,6 +170,7 @@ const ServiceFormModal: React.FC<Props> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, onClose]);
 
+  // ✅ EDIT: saat pilih kategori existing, update juga labelnya (nama)
   const handleChangeSelectCategory = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setSelectedCategoryId(value);
@@ -170,10 +180,9 @@ const ServiceFormModal: React.FC<Props> = ({
     if (master) setCategoryLabel(master.name);
   };
 
-  const handleChangeCustomCategory = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value;
-    setCategoryLabel(v);
-    if (!v) setSelectedCategoryId('');
+  // ✅ ADD: manual ketik
+  const handleChangeCategoryLabel = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setCategoryLabel(e.target.value);
   };
 
   const addInclude = () => {
@@ -202,14 +211,16 @@ const ServiceFormModal: React.FC<Props> = ({
     e.preventDefault();
     if (!name.trim()) return;
     if (!price.trim()) return;
-    if (!categoryLabel.trim()) return;
+
+    // ✅ validasi kategori:
+    // - ADD: wajib isi categoryLabel (nama)
+    // - EDIT: wajib pilih kategori existing (id)
+    if (!isEdit && !categoryLabel.trim()) return;
+    if (isEdit && !selectedCategoryId) return;
 
     setIsSubmitting(true);
     try {
-      const categoryIdNum =
-        selectedCategoryId !== ''
-          ? Number(selectedCategoryId)
-          : (serviceToEdit as any)?.service_category ?? 0;
+      const categoryIdNum = isEdit ? Number(selectedCategoryId) : 0;
 
       const pointJson = JSON.stringify({
         includes: uniqClean(includes),
@@ -221,21 +232,26 @@ const ServiceFormModal: React.FC<Props> = ({
         name: name.trim(),
         price: price.trim(),
         unit_price: unitPrice,
-        service_category: categoryIdNum,
-        category: categoryLabel.trim(),
+        service_category: categoryIdNum, // ✅ EDIT: id existing; ADD: 0
+        category: categoryLabel.trim(), // ✅ display nama kategori
         duration_minute: durationMinute.trim() || '',
         duration_hour: durationHour.trim() || '',
         is_guarantee: isGuarantee,
+        icon: '',
         point: pointJson,
       } as Service;
 
-      onSave(payload, selectedCategoryId);
+      // ✅ penting:
+      // - ADD: kirim nama kategori (backend boleh create/find)
+      // - EDIT: kirim kosong (backend jangan create kategori baru)
+      const categoryValue = isEdit ? '' : categoryLabel.trim();
+
+      onSave(payload, categoryValue);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // ✅ jangan return null saat close -> modal tetap hidup, cuma disembunyikan
   return (
     <div
       className={[
@@ -244,7 +260,6 @@ const ServiceFormModal: React.FC<Props> = ({
       ].join(' ')}
       aria-hidden={!isOpen}
       onMouseDown={(e) => {
-        // klik backdrop utk close (opsional)
         if (e.target === e.currentTarget) onClose();
       }}
     >
@@ -326,32 +341,56 @@ const ServiceFormModal: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Kategori */}
+          {/* ✅ Kategori */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
               Kategori
             </label>
 
-            <select
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary mb-2"
-              value={selectedCategoryId}
-              onChange={handleChangeSelectCategory}
-            >
-              <option value="">-- Pilih kategori --</option>
-              {categoryOptions.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
+            {isEdit ? (
+              <>
+                {/* EDIT: pilih existing */}
+                <select
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={selectedCategoryId}
+                  onChange={handleChangeSelectCategory}
+                  required
+                >
+                  <option value="">-- Pilih kategori --</option>
+                  {categoryOptions.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
 
-            <input
-              type="text"
-              className="w-full rounded-lg border border-dashed border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="Label kategori untuk tampilan (opsional)"
-              value={categoryLabel}
-              onChange={handleChangeCustomCategory}
-            />
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  Edit mode: hanya bisa pilih kategori yang sudah ada (tidak membuat kategori baru).
+                </p>
+              </>
+            ) : (
+              <>
+                {/* ADD: manual ketik */}
+                <input
+                  type="text"
+                  list="service-category-suggestions"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary"
+                  placeholder="Ketik kategori... (contoh: AC, Elektronik, Plumbing)"
+                  value={categoryLabel}
+                  onChange={handleChangeCategoryLabel}
+                  required
+                />
+                <datalist id="service-category-suggestions">
+                  {categoryNameSuggestions.map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
+
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  Tambah mode: kamu bisa ketik kategori baru. List hanya sebagai suggestion.
+                </p>
+              </>
+            )}
           </div>
 
           {/* Durasi */}
@@ -385,14 +424,13 @@ const ServiceFormModal: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* ✅ POINT SECTION */}
+          {/* POINT SECTION (tetap) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
             {/* Termasuk */}
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
                 Termasuk
               </label>
-
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -442,7 +480,6 @@ const ServiceFormModal: React.FC<Props> = ({
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
                 Tidak Termasuk
               </label>
-
               <div className="flex gap-2">
                 <input
                   type="text"
