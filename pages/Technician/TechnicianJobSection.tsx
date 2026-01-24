@@ -26,7 +26,7 @@ async function updateBookingStatusOnServer(
 ) {
   const statusCode = BOOKING_STATUS_TO_API_CODE[status] ?? BOOKING_STATUS_TO_API_CODE.Confirmed;
 
-  const base = (import.meta as any)?.env?.VITE_API_BASE_URL || 'https://api-homeservice.viniela.id';
+  const base = 'https://api-homeservice.viniela.id';
 
   const res = await fetch(`${base}/api/v1/admin/update-booking-status`, {
     method: 'PUT',
