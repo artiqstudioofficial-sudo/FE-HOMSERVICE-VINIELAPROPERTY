@@ -1,7 +1,10 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React from "react";
+import { Link } from "react-router-dom";
 
-const SocialIcon: React.FC<{ href: string; children: React.ReactNode }> = ({ href, children }) => (
+const SocialIcon: React.FC<{ href: string; children: React.ReactNode }> = ({
+  href,
+  children,
+}) => (
   <a
     href={href}
     target="_blank"
@@ -22,7 +25,8 @@ const Footer: React.FC = () => {
               <img src="./logo-footer.png" width="150" height="150" />
             </Link>
             <p className="text-gray-400 max-w-xs">
-              Solusi modern untuk semua kebutuhan perawatan dan perbaikan rumah Anda.
+              Solusi modern untuk semua kebutuhan perawatan dan perbaikan rumah
+              Anda.
             </p>
           </div>
           <div className="md:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-8">
@@ -32,7 +36,10 @@ const Footer: React.FC = () => {
                 <Link to="/" className="text-gray-300 hover:text-primary">
                   Home
                 </Link>
-                <Link to="/services" className="text-gray-300 hover:text-primary">
+                <Link
+                  to="/services"
+                  className="text-gray-300 hover:text-primary"
+                >
                   Services
                 </Link>
                 <Link to="/about" className="text-gray-300 hover:text-primary">
@@ -46,7 +53,10 @@ const Footer: React.FC = () => {
             <div>
               <h4 className="font-bold text-lg mb-4 text-white">Kontak</h4>
               <div className="flex flex-col space-y-2 text-gray-300">
-                <a href="mailto:info@viniela.com" className="hover:text-primary">
+                <a
+                  href="mailto:info@viniela.com"
+                  className="hover:text-primary"
+                >
                   info@viniela.com
                 </a>
                 <a href="tel:+628123456789" className="hover:text-primary">
@@ -57,7 +67,8 @@ const Footer: React.FC = () => {
             <div className="col-span-2 sm:col-span-1">
               <h4 className="font-bold text-lg mb-4 text-white">Kantor Kami</h4>
               <p className="text-gray-300 mb-4">
-                Jl. Jend. Sudirman No.1, Jakarta Pusat, Indonesia
+                Ruko Puri Orchard RK U 01-06 Jl. Lingkar Luar Barat No. Kav. 8,
+                Rawa Buaya, Kec. Cengkareng, Jakarta Barat 11740
               </p>
               <div className="rounded-lg overflow-hidden h-32 mb-4">
                 <iframe
@@ -90,7 +101,10 @@ const Footer: React.FC = () => {
         </div>
 
         <div className="mt-12 pt-8 border-t border-gray-700 flex flex-col sm:flex-row justify-between items-center text-sm text-gray-400">
-          <p>&copy; {new Date().getFullYear()} Viniela Home & Service. All rights reserved.</p>
+          <p>
+            &copy; {new Date().getFullYear()} Viniela Home & Service. All rights
+            reserved.
+          </p>
           <div className="flex space-x-4 mt-4 sm:mt-0">
             <Link to="/privacy-policy" className="hover:text-white">
               Privacy & Policy
