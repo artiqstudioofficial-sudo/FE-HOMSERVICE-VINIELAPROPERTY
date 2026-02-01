@@ -1,20 +1,15 @@
-import { Edit3, Info, Navigation, Search } from "lucide-react";
-import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Edit3, Info, Navigation, Search } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
-import Calendar from "../components/Calendar";
-import ConfirmationModal from "../components/ConfirmationModal";
+import Calendar from '../components/Calendar';
+import ConfirmationModal from '../components/ConfirmationModal';
 
-import { Service } from "../config/services";
-import { useNotification } from "../contexts/NotificationContext";
-import { fetchServicesFromApi, formatDateForApi } from "../lib/api/admin";
-import { simulateNotification } from "../lib/notifications";
-import {
-  Booking,
-  formatDateToKey,
-  generateTimeSlots,
-  getAvailability,
-} from "../lib/storage";
+import { Service } from '../config/services';
+import { useNotification } from '../contexts/NotificationContext';
+import { fetchServicesFromApi, formatDateForApi } from '../lib/api/admin';
+import { simulateNotification } from '../lib/notifications';
+import { Booking, formatDateToKey, generateTimeSlots, getAvailability } from '../lib/storage';
 
 /* -------------------------------------------------------------------------- */
 /*                          TIPE GROUPING KATEGORI LOCAL                      */
@@ -40,10 +35,7 @@ const ContactHero: React.FC = () => (
       />
     </div>
     <div className="relative container mx-auto px-6 py-32 text-center text-white">
-      <h1
-        className="text-4xl md:text-5xl font-bold font-poppins leading-tight"
-        data-aos="fade-up"
-      >
+      <h1 className="text-4xl md:text-5xl font-bold font-poppins leading-tight" data-aos="fade-up">
         Pesan Layanan Profesional Dengan Mudah
       </h1>
       <p
@@ -51,8 +43,8 @@ const ContactHero: React.FC = () => (
         data-aos="fade-up"
         data-aos-delay="100"
       >
-        Hanya beberapa langkah untuk menjadwalkan teknisi ahli kami. Isi
-        formulir di bawah ini dan biarkan kami yang mengurus sisanya.
+        Hanya beberapa langkah untuk menjadwalkan teknisi ahli kami. Isi formulir di bawah ini dan
+        biarkan kami yang mengurus sisanya.
       </p>
     </div>
   </div>
@@ -62,15 +54,10 @@ const ContactHero: React.FC = () => (
 /*                             PROGRESS INDICATOR                             */
 /* -------------------------------------------------------------------------- */
 
-const ProgressIndicator: React.FC<{ currentStep: number }> = ({
-  currentStep,
-}) => {
-  const steps = ["Info Kontak", "Layanan", "Jadwal", "Konfirmasi"];
+const ProgressIndicator: React.FC<{ currentStep: number }> = ({ currentStep }) => {
+  const steps = ['Info Kontak', 'Layanan', 'Jadwal', 'Konfirmasi'];
   return (
-    <div
-      className="flex items-start justify-center mb-10 px-4"
-      aria-label="Progress"
-    >
+    <div className="flex items-start justify-center mb-10 px-4" aria-label="Progress">
       {steps.map((step, index) => {
         const stepNumber = index + 1;
         const isCompleted = currentStep > stepNumber;
@@ -82,19 +69,14 @@ const ProgressIndicator: React.FC<{ currentStep: number }> = ({
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
                   isCompleted
-                    ? "bg-primary border-primary text-white"
+                    ? 'bg-primary border-primary text-white'
                     : isCurrent
-                    ? "border-primary text-primary"
-                    : "border-gray-300 dark:border-gray-600 text-gray-400"
+                      ? 'border-primary text-primary'
+                      : 'border-gray-300 dark:border-gray-600 text-gray-400'
                 }`}
               >
                 {isCompleted ? (
-                  <svg
-                    className="w-6 h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -103,20 +85,14 @@ const ProgressIndicator: React.FC<{ currentStep: number }> = ({
                     />
                   </svg>
                 ) : (
-                  <span
-                    className={`font-bold ${
-                      isCurrent ? "text-primary" : "text-gray-400"
-                    }`}
-                  >
+                  <span className={`font-bold ${isCurrent ? 'text-primary' : 'text-gray-400'}`}>
                     {stepNumber}
                   </span>
                 )}
               </div>
               <p
                 className={`mt-2 text-xs font-semibold break-words ${
-                  isCurrent || isCompleted
-                    ? "text-gray-800 dark:text-white"
-                    : "text-gray-400"
+                  isCurrent || isCompleted ? 'text-gray-800 dark:text-white' : 'text-gray-400'
                 }`}
               >
                 {step}
@@ -125,7 +101,7 @@ const ProgressIndicator: React.FC<{ currentStep: number }> = ({
             {index < steps.length - 1 && (
               <div
                 className={`flex-1 h-0.5 mt-5 transition-colors duration-300 ${
-                  isCompleted ? "bg-primary" : "bg-gray-200 dark:bg-gray-700"
+                  isCompleted ? 'bg-primary' : 'bg-gray-200 dark:bg-gray-700'
                 }`}
               ></div>
             )}
@@ -151,9 +127,7 @@ function loadGoogleMapsJs(apiKey: string) {
   if (window.google?.maps?.Geocoder) return Promise.resolve(true);
 
   // sudah pernah inject script?
-  const existing = document.querySelector<HTMLScriptElement>(
-    'script[data-gmaps="1"]'
-  );
+  const existing = document.querySelector<HTMLScriptElement>('script[data-gmaps="1"]');
   if (existing) {
     // tunggu sampai siap
     return new Promise<boolean>((resolve) => {
@@ -171,13 +145,13 @@ function loadGoogleMapsJs(apiKey: string) {
   }
 
   return new Promise<boolean>((resolve) => {
-    const script = document.createElement("script");
+    const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-      apiKey
+      apiKey,
     )}&libraries=places`;
     script.async = true;
     script.defer = true;
-    script.dataset.gmaps = "1";
+    script.dataset.gmaps = '1';
 
     script.onload = () => resolve(!!window.google?.maps?.Geocoder);
     script.onerror = () => resolve(false);
@@ -194,31 +168,29 @@ const ContactFormSection: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const initialServiceParam = searchParams.get("service") || "";
+  const initialServiceParam = searchParams.get('service') || '';
 
   const [step, setStep] = useState(1);
 
   const [formData, setFormData] = useState({
-    name: "",
-    whatsapp: "",
-    address: "",
-    service: "",
+    name: '',
+    whatsapp: '',
+    address: '',
+    service: '',
     startDate: null as Date | null,
     endDate: null as Date | null,
-    time: "",
+    time: '',
   });
 
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
-    null
-  );
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
-  const [locationError, setLocationError] = useState("");
+  const [locationError, setLocationError] = useState('');
   const [showLocationHint, setShowLocationHint] = useState(false);
-  const [scheduleError, setScheduleError] = useState("");
+  const [scheduleError, setScheduleError] = useState('');
 
-  const [addressQuery, setAddressQuery] = useState("");
+  const [addressQuery, setAddressQuery] = useState('');
   const [isGeocoding, setIsGeocoding] = useState(false);
-  const [locationMessage, setLocationMessage] = useState("");
+  const [locationMessage, setLocationMessage] = useState('');
 
   const [errors, setErrors] = useState<
     Partial<Record<keyof typeof formData, string>> & {
@@ -232,26 +204,19 @@ const ContactFormSection: React.FC = () => {
   const { addNotification } = useNotification();
 
   // AVAILABILITY (API) - NEW: counter map + capacity
-  const [fullyBookedDates, setFullyBookedDates] = useState<Set<string>>(
-    new Set()
-  );
+  const [fullyBookedDates, setFullyBookedDates] = useState<Set<string>>(new Set());
   const [bookedSlots, setBookedSlots] = useState<Record<string, number>>({});
   const [maxCapacityPerSlot, setMaxCapacityPerSlot] = useState<number>(1);
-  const [availabilityError, setAvailabilityError] = useState<string | null>(
-    null
-  );
-  const [availabilityLoading, setAvailabilityLoading] =
-    useState<boolean>(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [availabilityLoading, setAvailabilityLoading] = useState<boolean>(false);
 
   // Layanan dari API
-  const [allServicesData, setAllServicesData] = useState<
-    ServiceCategoryGroup[]
-  >([]);
+  const [allServicesData, setAllServicesData] = useState<ServiceCategoryGroup[]>([]);
   const [serviceError, setServiceError] = useState<string | null>(null);
   const [serviceLoading, setServiceLoading] = useState<boolean>(false);
 
   // ====== FIX: pastikan Google Maps JS ke-load (pakai key yang kamu minta) ======
-  const GOOGLE_KEY = "AIzaSyDaNrspVq4phMSTDrNS2JSLS-pBGPU8WuQ";
+  const GOOGLE_KEY = 'AIzaSyDaNrspVq4phMSTDrNS2JSLS-pBGPU8WuQ';
   const [gmapsReady, setGmapsReady] = useState(false);
   const [gmapsLoadError, setGmapsLoadError] = useState<string | null>(null);
 
@@ -266,7 +231,7 @@ const ContactFormSection: React.FC = () => {
       } else {
         setGmapsReady(false);
         setGmapsLoadError(
-          "Google Maps JS gagal dimuat. Cek internet, adblock, atau API key restriction."
+          'Google Maps JS gagal dimuat. Cek internet, adblock, atau API key restriction.',
         );
       }
     })();
@@ -288,21 +253,20 @@ const ContactFormSection: React.FC = () => {
 
         const byCategory: Record<string, Service[]> = {};
         servicesFromApi.forEach((service) => {
-          const categoryName = (service as any).category || "Lainnya";
+          const categoryName = (service as any).category || 'Lainnya';
           if (!byCategory[categoryName]) byCategory[categoryName] = [];
           byCategory[categoryName].push(service);
         });
 
-        const categories: ServiceCategoryGroup[] = Object.entries(
-          byCategory
-        ).map(([category, services]) => ({ category, services }));
+        const categories: ServiceCategoryGroup[] = Object.entries(byCategory).map(
+          ([category, services]) => ({ category, services }),
+        );
 
         setAllServicesData(categories);
 
         if (initialServiceParam) {
           const matchByName = servicesFromApi.find(
-            (s) =>
-              s.name.toLowerCase() === initialServiceParam.toLowerCase().trim()
+            (s) => s.name.toLowerCase() === initialServiceParam.toLowerCase().trim(),
           );
 
           if (matchByName) {
@@ -313,10 +277,9 @@ const ContactFormSection: React.FC = () => {
           }
         }
       } catch (err: any) {
-        console.error("Gagal memuat layanan dari API:", err);
+        console.error('Gagal memuat layanan dari API:', err);
         setServiceError(
-          err?.message ||
-            "Gagal memuat data layanan dari server. Silakan coba beberapa saat lagi."
+          err?.message || 'Gagal memuat data layanan dari server. Silakan coba beberapa saat lagi.',
         );
         setAllServicesData([]);
       } finally {
@@ -329,7 +292,7 @@ const ContactFormSection: React.FC = () => {
 
   const allServices = useMemo(
     () => allServicesData.flatMap((cat) => cat.services),
-    [allServicesData]
+    [allServicesData],
   );
 
   const selectedServiceDetails = useMemo(() => {
@@ -358,15 +321,11 @@ const ContactFormSection: React.FC = () => {
         const fully = Array.isArray(availability?.fully_booked_dates)
           ? availability.fully_booked_dates
           : Array.isArray(availability?.fullyBookedDates)
-          ? availability.fullyBookedDates
-          : [];
+            ? availability.fullyBookedDates
+            : [];
 
-        const booked =
-          availability?.booked_slots ?? availability?.bookedSlots ?? {};
-        const capRaw =
-          availability?.max_capacity_per_slot ??
-          availability?.maxCapacityPerSlot ??
-          1;
+        const booked = availability?.booked_slots ?? availability?.bookedSlots ?? {};
+        const capRaw = availability?.max_capacity_per_slot ?? availability?.maxCapacityPerSlot ?? 1;
         const capNum = Number(capRaw);
         const cap = Number.isFinite(capNum) && capNum > 0 ? capNum : 1;
 
@@ -376,12 +335,12 @@ const ContactFormSection: React.FC = () => {
         if (Array.isArray(booked)) {
           // legacy array => count occurrences
           for (const k of booked) {
-            if (typeof k !== "string") continue;
+            if (typeof k !== 'string') continue;
             bookedMap[k] = (bookedMap[k] || 0) + 1;
           }
-        } else if (booked && typeof booked === "object") {
+        } else if (booked && typeof booked === 'object') {
           for (const [k, v] of Object.entries(booked)) {
-            const n = typeof v === "number" ? v : parseInt(String(v), 10);
+            const n = typeof v === 'number' ? v : parseInt(String(v), 10);
             bookedMap[k] = Number.isFinite(n) && n > 0 ? n : 0;
           }
         }
@@ -390,9 +349,9 @@ const ContactFormSection: React.FC = () => {
         setBookedSlots(bookedMap);
         setMaxCapacityPerSlot(cap);
       } catch (err: any) {
-        console.error("Gagal load availability:", err);
+        console.error('Gagal load availability:', err);
         if (!mounted) return;
-        setAvailabilityError(err?.message || "Gagal memuat availability");
+        setAvailabilityError(err?.message || 'Gagal memuat availability');
         setFullyBookedDates(new Set());
         setBookedSlots({});
         setMaxCapacityPerSlot(1);
@@ -406,13 +365,10 @@ const ContactFormSection: React.FC = () => {
     };
   }, []);
 
-  const availableTimes = useMemo(
-    () => generateTimeSlots(9, 17, 12, 13, 30),
-    []
-  );
+  const availableTimes = useMemo(() => generateTimeSlots(9, 17, 12, 13, 30), []);
 
   const handleDateSelect = (date: Date) => {
-    setScheduleError("");
+    setScheduleError('');
     const newEndDate = new Date(date);
     newEndDate.setDate(newEndDate.getDate() + durationDays - 1);
 
@@ -420,10 +376,10 @@ const ContactFormSection: React.FC = () => {
       if (fullyBookedDates.has(formatDateToKey(d))) {
         setScheduleError(
           `Rentang tanggal yang dipilih (${date.toLocaleDateString(
-            "id-ID"
+            'id-ID',
           )} - ${newEndDate.toLocaleDateString(
-            "id-ID"
-          )}) tidak tersedia karena salah satu hari telah penuh.`
+            'id-ID',
+          )}) tidak tersedia karena salah satu hari telah penuh.`,
         );
         return;
       }
@@ -433,14 +389,12 @@ const ContactFormSection: React.FC = () => {
       ...prev,
       startDate: date,
       endDate: newEndDate,
-      time: "",
+      time: '',
     }));
   };
 
   const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
     const { name, value } = e.target;
     setErrors((prev) => ({ ...prev, [name]: undefined }));
@@ -449,13 +403,13 @@ const ContactFormSection: React.FC = () => {
 
   const handleUseCurrentLocation = () => {
     setIsFetchingLocation(true);
-    setLocationError("");
-    setLocationMessage("");
+    setLocationError('');
+    setLocationMessage('');
     setShowLocationHint(true);
     setErrors((prev) => ({ ...prev, location: undefined }));
 
     if (!navigator.geolocation) {
-      setLocationError("Geolocation tidak didukung oleh browser ini.");
+      setLocationError('Geolocation tidak didukung oleh browser ini.');
       setIsFetchingLocation(false);
       setShowLocationHint(false);
       return;
@@ -465,22 +419,20 @@ const ContactFormSection: React.FC = () => {
       (position) => {
         const { latitude, longitude } = position.coords;
         setLocation({ lat: latitude, lng: longitude });
-        setLocationMessage("Lokasi GPS berhasil ditemukan.");
+        setLocationMessage('Lokasi GPS berhasil ditemukan.');
         setIsFetchingLocation(false);
         setShowLocationHint(false);
       },
       (error) => {
-        let message =
-          "Gagal mendapatkan lokasi. Pastikan izin lokasi diaktifkan.";
+        let message = 'Gagal mendapatkan lokasi. Pastikan izin lokasi diaktifkan.';
         if (error.code === error.PERMISSION_DENIED) {
-          message =
-            "Anda menolak izin lokasi. Mohon izinkan akses untuk melanjutkan.";
+          message = 'Anda menolak izin lokasi. Mohon izinkan akses untuk melanjutkan.';
         }
         setLocationError(message);
         setIsFetchingLocation(false);
         setShowLocationHint(false);
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
     );
   };
 
@@ -490,13 +442,13 @@ const ContactFormSection: React.FC = () => {
   const handleSearchAddress = async () => {
     const q = addressQuery.trim();
     if (!q) {
-      setLocationMessage("Mohon masukkan alamat untuk dicari.");
+      setLocationMessage('Mohon masukkan alamat untuk dicari.');
       return;
     }
 
     setIsGeocoding(true);
-    setLocationError("");
-    setLocationMessage("");
+    setLocationError('');
+    setLocationMessage('');
     setErrors((prev) => ({ ...prev, location: undefined }));
 
     try {
@@ -505,9 +457,7 @@ const ContactFormSection: React.FC = () => {
         const ok = await loadGoogleMapsJs(GOOGLE_KEY);
         setGmapsReady(ok);
         if (!ok) {
-          throw new Error(
-            "Google Maps JS belum siap. Cek adblock / restriction / network."
-          );
+          throw new Error('Google Maps JS belum siap. Cek adblock / restriction / network.');
         }
       }
 
@@ -517,51 +467,46 @@ const ContactFormSection: React.FC = () => {
         geocoder.geocode(
           {
             address: q,
-            region: "ID",
+            region: 'ID',
           },
           (results: any, status: string) => {
-            if (status === "OK" && results?.length) resolve(results[0]);
+            if (status === 'OK' && results?.length) resolve(results[0]);
             else {
               // status penting: REQUEST_DENIED, ZERO_RESULTS, OVER_QUERY_LIMIT, INVALID_REQUEST
               reject(new Error(`Geocoding gagal: ${status}`));
             }
-          }
+          },
         );
       });
 
       const loc = result.geometry.location;
-      const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat;
-      const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng;
+      const lat = typeof loc.lat === 'function' ? loc.lat() : loc.lat;
+      const lng = typeof loc.lng === 'function' ? loc.lng() : loc.lng;
 
-      if (typeof lat !== "number" || typeof lng !== "number") {
-        throw new Error("Koordinat tidak valid dari Google Maps.");
+      if (typeof lat !== 'number' || typeof lng !== 'number') {
+        throw new Error('Koordinat tidak valid dari Google Maps.');
       }
 
       setLocation({ lat, lng });
-      setLocationMessage(
-        `Lokasi berhasil ditemukan: ${result.formatted_address || q}`
-      );
+      setLocationMessage(`Lokasi berhasil ditemukan: ${result.formatted_address || q}`);
     } catch (err: any) {
-      console.error("Manual geocode error:", err);
+      console.error('Manual geocode error:', err);
 
       // tampilkan sebab paling umum
-      const msg = String(err?.message || "");
-      if (msg.includes("REQUEST_DENIED")) {
+      const msg = String(err?.message || '');
+      if (msg.includes('REQUEST_DENIED')) {
         setLocationMessage(
-          "REQUEST_DENIED: API key kemungkinan belum enable Geocoding API / Maps JavaScript API, billing belum aktif, atau domain belum di-allow di key restriction."
+          'REQUEST_DENIED: API key kemungkinan belum enable Geocoding API / Maps JavaScript API, billing belum aktif, atau domain belum di-allow di key restriction.',
         );
-      } else if (msg.includes("ZERO_RESULTS")) {
+      } else if (msg.includes('ZERO_RESULTS')) {
         setLocationMessage(
-          "Alamat tidak ditemukan (ZERO_RESULTS). Coba tulis lebih spesifik, misal: 'Monas, Jakarta Pusat'."
+          "Alamat tidak ditemukan (ZERO_RESULTS). Coba tulis lebih spesifik, misal: 'Monas, Jakarta Pusat'.",
         );
-      } else if (msg.includes("OVER_QUERY_LIMIT")) {
-        setLocationMessage(
-          "Kuota geocoding habis (OVER_QUERY_LIMIT). Coba lagi nanti."
-        );
+      } else if (msg.includes('OVER_QUERY_LIMIT')) {
+        setLocationMessage('Kuota geocoding habis (OVER_QUERY_LIMIT). Coba lagi nanti.');
       } else {
         setLocationMessage(
-          err?.message ||
-            "Terjadi kesalahan saat mencari alamat. Silakan coba lagi."
+          err?.message || 'Terjadi kesalahan saat mencari alamat. Silakan coba lagi.',
         );
       }
 
@@ -571,29 +516,24 @@ const ContactFormSection: React.FC = () => {
     }
   };
 
-  const validateField = (
-    name: keyof typeof formData,
-    value: string
-  ): string | undefined => {
+  const validateField = (name: keyof typeof formData, value: string): string | undefined => {
     switch (name) {
-      case "name":
-        if (!value.trim()) return "Nama wajib diisi.";
+      case 'name':
+        if (!value.trim()) return 'Nama wajib diisi.';
         break;
-      case "whatsapp":
-        if (!value.trim()) return "Nomor WhatsApp wajib diisi.";
+      case 'whatsapp':
+        if (!value.trim()) return 'Nomor WhatsApp wajib diisi.';
         if (!/^(08|\+628)\d{8,12}$/.test(value))
-          return "Format nomor WhatsApp tidak valid (contoh: 08123456789).";
+          return 'Format nomor WhatsApp tidak valid (contoh: 08123456789).';
         break;
-      case "address":
-        if (!value.trim()) return "Alamat wajib diisi.";
+      case 'address':
+        if (!value.trim()) return 'Alamat wajib diisi.';
         break;
     }
     return undefined;
   };
 
-  const handleBlur = (
-    e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target as {
       name: keyof typeof formData;
       value: string;
@@ -606,16 +546,16 @@ const ContactFormSection: React.FC = () => {
     const newErrors: Partial<Record<keyof typeof formData, string>> & {
       location?: string;
     } = {};
-    const nameError = validateField("name", formData.name);
+    const nameError = validateField('name', formData.name);
     if (nameError) newErrors.name = nameError;
 
-    const whatsappError = validateField("whatsapp", formData.whatsapp);
+    const whatsappError = validateField('whatsapp', formData.whatsapp);
     if (whatsappError) newErrors.whatsapp = whatsappError;
 
-    const addressError = validateField("address", formData.address);
+    const addressError = validateField('address', formData.address);
     if (addressError) newErrors.address = addressError;
 
-    if (!location) newErrors.location = "Mohon tandai lokasi Anda.";
+    if (!location) newErrors.location = 'Mohon tandai lokasi Anda.';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -623,15 +563,15 @@ const ContactFormSection: React.FC = () => {
 
   const validateStep2 = (): boolean => {
     const newErrors: Partial<Record<keyof typeof formData, string>> = {};
-    if (!formData.service) newErrors.service = "Pilih layanan.";
+    if (!formData.service) newErrors.service = 'Pilih layanan.';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const validateStep3 = (): boolean => {
     const newErrors: Partial<Record<keyof typeof formData, string>> = {};
-    if (!formData.startDate) newErrors.startDate = "Pilih tanggal.";
-    if (!formData.time) newErrors.time = "Pilih waktu.";
+    if (!formData.startDate) newErrors.startDate = 'Pilih tanggal.';
+    if (!formData.time) newErrors.time = 'Pilih waktu.';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -661,25 +601,19 @@ const ContactFormSection: React.FC = () => {
     }
 
     if (!location || !formData.startDate) {
-      addNotification(
-        "Lokasi atau tanggal belum terisi. Silakan lengkapi data.",
-        "error"
-      );
+      addNotification('Lokasi atau tanggal belum terisi. Silakan lengkapi data.', 'error');
       return;
     }
 
     const serviceId = Number(formData.service);
     if (!serviceId || Number.isNaN(serviceId)) {
-      addNotification(
-        "Layanan tidak valid. Silakan pilih ulang layanan.",
-        "error"
-      );
+      addNotification('Layanan tidak valid. Silakan pilih ulang layanan.', 'error');
       setStep(2);
       return;
     }
 
     if (availabilityLoading) {
-      addNotification("Sedang memuat slot jadwal. Coba lagi sebentar.", "info");
+      addNotification('Sedang memuat slot jadwal. Coba lagi sebentar.', 'info');
       return;
     }
 
@@ -697,15 +631,12 @@ const ContactFormSection: React.FC = () => {
         schedule_time: formData.time,
       };
 
-      const res = await fetch(
-        "https://api-homeservice.viniela.id/api/v1/user/store-booking",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify(payload),
-        }
-      );
+      const res = await fetch('https://api-homeservice.viniela.id/api/v1/user/store-booking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
 
       let resJson: any = null;
       try {
@@ -715,27 +646,19 @@ const ContactFormSection: React.FC = () => {
       }
 
       if (!res.ok) {
-        const serverMsg = resJson?.message || resJson?.error || "";
-        if (res.status === 409 && String(serverMsg).includes("SLOT_FULL")) {
-          throw new Error("Slot jam itu sudah penuh. Silakan pilih jam lain.");
+        const serverMsg = resJson?.message || resJson?.error || '';
+        if (res.status === 409 && String(serverMsg).includes('SLOT_FULL')) {
+          throw new Error('Slot jam itu sudah penuh. Silakan pilih jam lain.');
         }
-        if (
-          res.status === 409 &&
-          String(serverMsg).includes("DATE_NOT_AVAILABLE")
-        ) {
-          throw new Error(
-            "Tanggal yang dipilih tidak tersedia. Silakan pilih tanggal lain."
-          );
+        if (res.status === 409 && String(serverMsg).includes('DATE_NOT_AVAILABLE')) {
+          throw new Error('Tanggal yang dipilih tidak tersedia. Silakan pilih tanggal lain.');
         }
 
-        const msg =
-          serverMsg ||
-          `Gagal menyimpan booking di server (status ${res.status}).`;
+        const msg = serverMsg || `Gagal menyimpan booking di server (status ${res.status}).`;
         throw new Error(msg);
       }
 
-      const serviceNameForDisplay =
-        selectedServiceDetails?.name || initialServiceParam || "";
+      const serviceNameForDisplay = selectedServiceDetails?.name || initialServiceParam || '';
 
       const newBooking: Booking = {
         id: Date.now(),
@@ -746,21 +669,18 @@ const ContactFormSection: React.FC = () => {
         startDate: formData.startDate.toISOString(),
         endDate: (formData.endDate ?? formData.startDate).toISOString(),
         time: formData.time,
-        status: "Confirmed",
-        technician: "Belum Ditugaskan",
+        status: 'Confirmed',
+        technician: 'Belum Ditugaskan',
         lat: location.lat,
         lng: location.lng,
+        formId: 0,
       };
 
       // ✅ Update UI availability dari response server (tanpa saveAvailability local)
       const slotKey = `${formatDateToKey(formData.startDate)}-${formData.time}`;
 
-      const usedFromServer = Number(
-        resJson?.data?.used ?? resJson?.used ?? NaN
-      );
-      const capFromServer = Number(
-        resJson?.data?.capacity ?? resJson?.capacity ?? NaN
-      );
+      const usedFromServer = Number(resJson?.data?.used ?? resJson?.used ?? NaN);
+      const capFromServer = Number(resJson?.data?.capacity ?? resJson?.capacity ?? NaN);
 
       if (Number.isFinite(capFromServer) && capFromServer > 0) {
         setMaxCapacityPerSlot(capFromServer);
@@ -791,17 +711,15 @@ const ContactFormSection: React.FC = () => {
         });
       }
 
-      const uiMessage = simulateNotification("order_created", newBooking);
-      addNotification(uiMessage, "success");
+      const uiMessage = simulateNotification('order_created', newBooking);
+      addNotification(uiMessage, 'success');
 
       setIsModalOpen(true);
     } catch (err: any) {
-      console.error("Gagal menyimpan booking:", err);
+      console.error('Gagal menyimpan booking:', err);
       addNotification(
-        `Gagal menyimpan booking: ${
-          err?.message || "Terjadi kesalahan tidak diketahui."
-        }`,
-        "error"
+        `Gagal menyimpan booking: ${err?.message || 'Terjadi kesalahan tidak diketahui.'}`,
+        'error',
       );
     } finally {
       setIsLoading(false);
@@ -811,44 +729,40 @@ const ContactFormSection: React.FC = () => {
   const closeModal = () => {
     setIsModalOpen(false);
     setFormData({
-      name: "",
-      whatsapp: "",
-      address: "",
-      service: "",
+      name: '',
+      whatsapp: '',
+      address: '',
+      service: '',
       startDate: null,
       endDate: null,
-      time: "",
+      time: '',
     });
     setLocation(null);
-    setLocationError("");
+    setLocationError('');
     setErrors({});
     setStep(1);
-    navigate("/services");
+    navigate('/services');
   };
 
   const scheduleString = useMemo(() => {
-    if (!formData.startDate) return "";
-    const start = formData.startDate.toLocaleDateString("id-ID", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
+    if (!formData.startDate) return '';
+    const start = formData.startDate.toLocaleDateString('id-ID', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
     });
-    if (
-      !formData.endDate ||
-      formData.startDate.getTime() === formData.endDate.getTime()
-    ) {
+    if (!formData.endDate || formData.startDate.getTime() === formData.endDate.getTime()) {
       return start;
     }
-    const end = formData.endDate.toLocaleDateString("id-ID", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
+    const end = formData.endDate.toLocaleDateString('id-ID', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
     });
     return `${start} - ${end}`;
   }, [formData.startDate, formData.endDate]);
 
-  const serviceNameForDisplay =
-    selectedServiceDetails?.name || initialServiceParam || "";
+  const serviceNameForDisplay = selectedServiceDetails?.name || initialServiceParam || '';
 
   return (
     <section className="py-24 bg-light-bg dark:bg-slate-900">
@@ -862,15 +776,11 @@ const ContactFormSection: React.FC = () => {
             <ProgressIndicator currentStep={step} />
 
             {serviceError && (
-              <div className="mb-4 text-center text-sm text-red-500">
-                {serviceError}
-              </div>
+              <div className="mb-4 text-center text-sm text-red-500">{serviceError}</div>
             )}
 
             {availabilityError && (
-              <div className="mb-4 text-center text-sm text-red-500">
-                {availabilityError}
-              </div>
+              <div className="mb-4 text-center text-sm text-red-500">{availabilityError}</div>
             )}
 
             <form onSubmit={handleSubmit} noValidate>
@@ -895,11 +805,7 @@ const ContactFormSection: React.FC = () => {
                           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-slate-700 dark:border-slate-600 focus:border-primary focus:ring-primary"
                           required
                         />
-                        {errors.name && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {errors.name}
-                          </p>
-                        )}
+                        {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
                       </div>
 
                       <div>
@@ -921,9 +827,7 @@ const ContactFormSection: React.FC = () => {
                           required
                         />
                         {errors.whatsapp && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {errors.whatsapp}
-                          </p>
+                          <p className="text-red-500 text-xs mt-1">{errors.whatsapp}</p>
                         )}
                       </div>
                     </div>
@@ -947,9 +851,7 @@ const ContactFormSection: React.FC = () => {
                         required
                       ></textarea>
                       {errors.address && (
-                        <p className="text-red-500 text-xs mt-1">
-                          {errors.address}
-                        </p>
+                        <p className="text-red-500 text-xs mt-1">{errors.address}</p>
                       )}
                     </div>
 
@@ -964,8 +866,7 @@ const ContactFormSection: React.FC = () => {
                           Opsi 1: Gunakan Lokasi GPS
                         </h4>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                          Paling akurat jika Anda memesan dari lokasi
-                          pengerjaan.
+                          Paling akurat jika Anda memesan dari lokasi pengerjaan.
                         </p>
 
                         <button
@@ -1000,9 +901,7 @@ const ContactFormSection: React.FC = () => {
                           )}
 
                           <span>
-                            {isFetchingLocation
-                              ? "Mencari GPS..."
-                              : "Gunakan Lokasi Saat Ini"}
+                            {isFetchingLocation ? 'Mencari GPS...' : 'Gunakan Lokasi Saat Ini'}
                           </span>
                         </button>
 
@@ -1014,9 +913,7 @@ const ContactFormSection: React.FC = () => {
                         )}
 
                         {locationError && (
-                          <p className="text-red-500 text-xs mt-2">
-                            {locationError}
-                          </p>
+                          <p className="text-red-500 text-xs mt-2">{locationError}</p>
                         )}
                       </div>
 
@@ -1035,8 +932,7 @@ const ContactFormSection: React.FC = () => {
                           Opsi 2: Cari Alamat Manual
                         </h4>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                          Gunakan jika memesan untuk lokasi lain (misal: rumah
-                          orang tua).
+                          Gunakan jika memesan untuk lokasi lain (misal: rumah orang tua).
                         </p>
 
                         {/* status maps loader */}
@@ -1046,9 +942,7 @@ const ContactFormSection: React.FC = () => {
                           </p>
                         )}
                         {gmapsLoadError && (
-                          <p className="text-xs text-red-500 mb-2">
-                            {gmapsLoadError}
-                          </p>
+                          <p className="text-xs text-red-500 mb-2">{gmapsLoadError}</p>
                         )}
 
                         <div className="flex items-center gap-2 mt-1">
@@ -1057,7 +951,7 @@ const ContactFormSection: React.FC = () => {
                             value={addressQuery}
                             onChange={(e) => setAddressQuery(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") {
+                              if (e.key === 'Enter') {
                                 e.preventDefault();
                                 handleSearchAddress();
                               }
@@ -1095,16 +989,14 @@ const ContactFormSection: React.FC = () => {
                             ) : (
                               <Search size={16} />
                             )}
-                            <span>{isGeocoding ? "Mencari..." : "Cari"}</span>
+                            <span>{isGeocoding ? 'Mencari...' : 'Cari'}</span>
                           </button>
                         </div>
 
                         {locationMessage && (
                           <p
                             className={`text-xs mt-2 ${
-                              location
-                                ? "text-green-600 dark:text-green-400"
-                                : "text-red-500"
+                              location ? 'text-green-600 dark:text-green-400' : 'text-red-500'
                             }`}
                           >
                             {locationMessage}
@@ -1112,13 +1004,9 @@ const ContactFormSection: React.FC = () => {
                         )}
                       </div>
 
-                      {errors.location &&
-                        !locationError &&
-                        !locationMessage && (
-                          <p className="text-red-500 text-xs mt-2">
-                            {errors.location}
-                          </p>
-                        )}
+                      {errors.location && !locationError && !locationMessage && (
+                        <p className="text-red-500 text-xs mt-2">{errors.location}</p>
+                      )}
 
                       {location && (
                         <div className="mt-4 rounded-lg overflow-hidden h-48 shadow-md border dark:border-slate-600">
@@ -1163,15 +1051,9 @@ const ContactFormSection: React.FC = () => {
                         </option>
 
                         {allServicesData.map((category) => (
-                          <optgroup
-                            key={category.category}
-                            label={category.category}
-                          >
+                          <optgroup key={category.category} label={category.category}>
                             {category.services.map((service) => (
-                              <option
-                                key={service.id ?? service.name}
-                                value={String(service.id)}
-                              >
+                              <option key={service.id ?? service.name} value={String(service.id)}>
                                 {service.name}
                               </option>
                             ))}
@@ -1180,16 +1062,13 @@ const ContactFormSection: React.FC = () => {
                       </select>
 
                       {errors.service && (
-                        <p className="text-red-500 text-xs mt-1">
-                          {errors.service}
-                        </p>
+                        <p className="text-red-500 text-xs mt-1">{errors.service}</p>
                       )}
 
                       {selectedServiceDetails && (
                         <div className="mt-4 p-3 bg-primary-light dark:bg-slate-700/50 rounded-lg text-sm text-primary-dark dark:text-teal-300">
-                          Estimasi durasi pengerjaan:{" "}
-                          <strong>{durationDays} hari</strong>. Kalender akan
-                          otomatis memilih rentang tanggal yang dibutuhkan.
+                          Estimasi durasi pengerjaan: <strong>{durationDays} hari</strong>. Kalender
+                          akan otomatis memilih rentang tanggal yang dibutuhkan.
                         </div>
                       )}
                     </div>
@@ -1211,14 +1090,10 @@ const ContactFormSection: React.FC = () => {
                       />
 
                       {errors.startDate && (
-                        <p className="text-red-500 text-xs mt-1">
-                          {errors.startDate}
-                        </p>
+                        <p className="text-red-500 text-xs mt-1">{errors.startDate}</p>
                       )}
                       {scheduleError && (
-                        <p className="text-red-500 text-xs mt-1">
-                          {scheduleError}
-                        </p>
+                        <p className="text-red-500 text-xs mt-1">{scheduleError}</p>
                       )}
                     </div>
 
@@ -1243,45 +1118,33 @@ const ContactFormSection: React.FC = () => {
 
                             {maxCapacityPerSlot > 1 && (
                               <p className="mt-1 opacity-80">
-                                Kapasitas per jam:{" "}
-                                <strong>{maxCapacityPerSlot}</strong>
+                                Kapasitas per jam: <strong>{maxCapacityPerSlot}</strong>
                               </p>
                             )}
                           </div>
 
                           <div className="grid grid-cols-2 gap-2">
                             {availableTimes.map((time) => {
-                              const slotKey = `${formatDateToKey(
-                                formData.startDate!
-                              )}-${time}`;
+                              const slotKey = `${formatDateToKey(formData.startDate!)}-${time}`;
                               const used = bookedSlots[slotKey] || 0;
                               const isFull = used >= maxCapacityPerSlot;
-                              const remaining = Math.max(
-                                0,
-                                maxCapacityPerSlot - used
-                              );
+                              const remaining = Math.max(0, maxCapacityPerSlot - used);
 
                               return (
                                 <button
                                   type="button"
                                   key={time}
-                                  onClick={() =>
-                                    setFormData((prev) => ({ ...prev, time }))
-                                  }
+                                  onClick={() => setFormData((prev) => ({ ...prev, time }))}
                                   disabled={isFull}
-                                  title={
-                                    isFull
-                                      ? "Slot penuh"
-                                      : `Sisa kapasitas: ${remaining}`
-                                  }
+                                  title={isFull ? 'Slot penuh' : `Sisa kapasitas: ${remaining}`}
                                   className={`p-2 rounded-md text-sm font-semibold border-2 transition-colors ${
                                     formData.time === time
-                                      ? "bg-primary text-white border-primary"
-                                      : "bg-transparent border-gray-300 dark:border-slate-600"
+                                      ? 'bg-primary text-white border-primary'
+                                      : 'bg-transparent border-gray-300 dark:border-slate-600'
                                   } ${
                                     isFull
-                                      ? "bg-gray-200 dark:bg-slate-600 text-gray-400 dark:text-gray-500 line-through cursor-not-allowed"
-                                      : "hover:border-primary"
+                                      ? 'bg-gray-200 dark:bg-slate-600 text-gray-400 dark:text-gray-500 line-through cursor-not-allowed'
+                                      : 'hover:border-primary'
                                   }`}
                                 >
                                   {time}
@@ -1297,11 +1160,7 @@ const ContactFormSection: React.FC = () => {
                         </>
                       )}
 
-                      {errors.time && (
-                        <p className="text-red-500 text-xs mt-1">
-                          {errors.time}
-                        </p>
-                      )}
+                      {errors.time && <p className="text-red-500 text-xs mt-1">{errors.time}</p>}
                     </div>
                   </div>
                 )}
@@ -1316,15 +1175,11 @@ const ContactFormSection: React.FC = () => {
                     <div className="bg-light-bg dark:bg-slate-700/50 p-4 rounded-lg space-y-4">
                       <div className="flex justify-between items-start">
                         <div>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Info Kontak
-                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Info Kontak</p>
                           <p className="font-semibold text-gray-800 dark:text-white">
                             {formData.name}
                           </p>
-                          <p className="text-gray-600 dark:text-slate-300">
-                            {formData.whatsapp}
-                          </p>
+                          <p className="text-gray-600 dark:text-slate-300">{formData.whatsapp}</p>
                           <p className="text-gray-600 dark:text-slate-300 max-w-xs">
                             {formData.address}
                           </p>
@@ -1340,11 +1195,9 @@ const ContactFormSection: React.FC = () => {
 
                       <div className="flex justify-between items-center border-t border-gray-200 dark:border-slate-600 pt-3">
                         <div>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Layanan
-                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Layanan</p>
                           <p className="font-semibold text-gray-800 dark:text-white">
-                            {serviceNameForDisplay || "-"}
+                            {serviceNameForDisplay || '-'}
                           </p>
                         </div>
                         <button
@@ -1358,9 +1211,7 @@ const ContactFormSection: React.FC = () => {
 
                       <div className="flex justify-between items-center border-t border-gray-200 dark:border-slate-600 pt-3">
                         <div>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Jadwal
-                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Jadwal</p>
                           <p className="font-semibold text-gray-800 dark:text-white">
                             {scheduleString} - {formData.time}
                           </p>
@@ -1449,7 +1300,7 @@ const ContactFormSection: React.FC = () => {
                         ></path>
                       </svg>
                     )}
-                    {isLoading ? "Mengirim..." : "Kirim Pesanan"}
+                    {isLoading ? 'Mengirim...' : 'Kirim Pesanan'}
                   </button>
                 )}
               </div>
@@ -1463,7 +1314,7 @@ const ContactFormSection: React.FC = () => {
         onClose={closeModal}
         bookingDetails={{
           name: formData.name,
-          service: serviceNameForDisplay || "-",
+          service: serviceNameForDisplay || '-',
           schedule: `${scheduleString} pukul ${formData.time}`,
         }}
       />

@@ -23,7 +23,11 @@ export interface Service {
   id: number;
   name: string;
   price: string;
+  icon: string;
+  duration_hour: string;
+  duration_minute: string;
   unit_price: string;
+  is_guarantee: boolean;
   service_category: number;
   category: string;
 }
