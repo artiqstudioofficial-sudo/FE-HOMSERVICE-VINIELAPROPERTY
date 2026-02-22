@@ -2,4 +2,4 @@ const k=e=>e.startsWith("0")?`62${e.substring(1)}`:e.startsWith("+62")?e.substri
     -----------------------------------------
     Recipient: ${s}
     Message: ${i}
-    -----------------------------------------`),n};export{r as m};
+    -----------------------------------------`),n};export{r};
