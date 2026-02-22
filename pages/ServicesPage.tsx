@@ -1,9 +1,9 @@
 import { Clock, ShieldCheck } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import ServiceDetailModal from '../components/ServiceDetailModal';
 import { Service, serviceIcons } from '../config/services';
 import { fetchServicesFromApi } from '../lib/api/admin';
+import ServiceDetailModal from '@/components/admin/modals/ServiceDetailModal';
 
 /* -------------------------------------------------------------------------- */
 /*                          TIPE GROUPING KATEGORI                             */

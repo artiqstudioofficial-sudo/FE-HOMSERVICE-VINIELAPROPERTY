@@ -1,7 +1,7 @@
 import { CheckCircle, Clock, ShieldCheck, X, XCircle } from 'lucide-react';
 import React, { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Service, serviceIcons } from '../config/services';
+import { Service, serviceIcons } from '../../../config/services';
 
 interface ServiceDetailModalProps {
   service: Service | null;
@@ -18,7 +18,7 @@ const formatDuration = (minutes?: number): string => {
 };
 
 const formatPrice = (price?: number | string): string => {
-  const num = typeof price === 'string' ? Number(price) : price ?? 0;
+  const num = typeof price === 'string' ? Number(price) : (price ?? 0);
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',

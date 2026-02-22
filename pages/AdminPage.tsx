@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import BookingFormModal, { StoreBookingPayload } from '../components/BookingFormModal';
 import GenericConfirmationModal from '../components/GenericConfirmationModal';
-import ServiceFormModal from '../components/ServiceFormModal';
 
 import { Service } from '../config/services';
 import { useAuth } from '../contexts/AuthContext';
@@ -31,6 +30,11 @@ import {
   storeBookingOnServer,
   updateBookingStatusOnServer,
   updateServiceOnServer,
+
+  // ✅ Category CRUD (NEW)
+  createServiceCategoryOnServer,
+  updateServiceCategoryOnServer,
+  deleteServiceCategoryOnServer,
 } from '../lib/api/admin';
 
 import { BookingStatus, formatDateToKey, generateTimeSlots } from '../lib/storage';
@@ -45,6 +49,11 @@ import MapSection from '@/components/admin/sections/MapSection';
 import ScheduleSection from '@/components/admin/sections/ScheduleSection';
 import ServicesSection from '@/components/admin/sections/ServicesSection';
 import TechniciansSection from '@/components/admin/sections/TechniciansSection';
+
+// ✅ NEW UI Components
+import ServiceCategoriesSection from '@/components/admin/sections/ServiceCategoriesSection';
+import ServiceCategoryFormModal from '@/components/admin/modals/ServiceCategoryFormModal';
+import ServiceFormModal from '@/components/admin/modals/ServiceFormModal';
 
 export type AdminSection =
   | 'kpi'
@@ -101,6 +110,11 @@ const AdminPage: React.FC = () => {
     serviceName: string;
     categoryName: string;
   } | null>(null);
+
+  // ✅ service categories UI state
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [categoryEditObj, setCategoryEditObj] = useState<ServiceMasterCategory | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<ServiceMasterCategory | null>(null);
 
   // technicians
   const [isTechnicianModalOpen, setIsTechnicianModalOpen] = useState(false);
@@ -414,7 +428,7 @@ const AdminPage: React.FC = () => {
         return;
       }
 
-      const nextStatus = (value as BookingStatus) ?? statusDraft[bookingId] ?? booking.status; // ✅ ambil yg baru
+      const nextStatus = (value as BookingStatus) ?? statusDraft[bookingId] ?? booking.status;
       const nextTechId = booking.technicianUserId ?? null;
 
       try {
@@ -424,7 +438,6 @@ const AdminPage: React.FC = () => {
           return;
         }
 
-        // opsional: validasi teknisi kalau backend butuh userId
         if (!nextTechId) {
           addNotification('Teknisi belum dipilih. Pilih teknisi dulu.', 'error');
           closeConfirmationModal();
@@ -612,6 +625,98 @@ const AdminPage: React.FC = () => {
     }
   };
 
+  /* ------------------------ HANDLER SERVICE CATEGORY (CRUD) ------------------------ */
+
+  const servicesCountByCategoryId = useMemo(() => {
+    const map: Record<number, number> = {};
+    services.forEach((s) => {
+      const id = Number((s as any)?.service_category);
+      if (!Number.isFinite(id)) return;
+      map[id] = (map[id] || 0) + 1;
+    });
+    return map;
+  }, [services]);
+
+  const handleOpenAddCategory = () => {
+    setCategoryEditObj(null);
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleOpenEditCategory = (cat: ServiceMasterCategory) => {
+    setCategoryEditObj(cat);
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleSaveCategory = async (value: { name: string }) => {
+    const isEdit = !!categoryEditObj;
+
+    try {
+      if (isEdit && categoryEditObj) {
+        const id = categoryEditObj.id;
+        const oldName = categoryEditObj.name;
+
+        const updated = await updateServiceCategoryOnServer(id, { name: value.name });
+
+        // update categories
+        setServiceCategories((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, name: updated.name } : c)),
+        );
+
+        // update service label category (biar UI konsisten)
+        setServices((prev) =>
+          prev.map((s) =>
+            Number((s as any).service_category) === id ? { ...s, category: updated.name } : s,
+          ),
+        );
+
+        addNotification(`Kategori "${oldName}" berhasil diubah jadi "${updated.name}".`, 'success');
+      } else {
+        const created = await createServiceCategoryOnServer({ name: value.name });
+
+        // kalau backend return id=0 (fallback), kita tetap push dan nanti bisa reload
+        setServiceCategories((prev) => {
+          const next = [...prev, created];
+          // sort desc id
+          return next.sort((a, b) => (b.id || 0) - (a.id || 0));
+        });
+
+        addNotification(`Kategori "${created.name}" berhasil ditambahkan.`, 'success');
+      }
+
+      setIsCategoryModalOpen(false);
+      setCategoryEditObj(null);
+    } catch (err: any) {
+      console.error(err);
+      addNotification(err?.message || 'Gagal menyimpan kategori ke server.', 'error');
+    }
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+
+    const cat = categoryToDelete;
+    try {
+      await deleteServiceCategoryOnServer(cat.id);
+
+      setServiceCategories((prev) => prev.filter((c) => c.id !== cat.id));
+
+      // optional: kalau ada services yang masih pakai kategori ini, biarin dulu (backend rule beda-beda)
+      // kita cuma update label jadi kosong supaya keliatan "unmapped"
+      setServices((prev) =>
+        prev.map((s) =>
+          Number((s as any).service_category) === cat.id ? { ...s, category: '-' } : s,
+        ),
+      );
+
+      addNotification(`Kategori "${cat.name}" berhasil dihapus.`, 'success');
+    } catch (err: any) {
+      console.error(err);
+      addNotification(err?.message || `Gagal menghapus kategori "${cat.name}".`, 'error');
+    } finally {
+      setCategoryToDelete(null);
+    }
+  };
+
   /* --------------------------- HANDLER TECHNICIAN --------------------------- */
 
   const handleOpenAddTechnician = () => {
@@ -631,16 +736,12 @@ const AdminPage: React.FC = () => {
       return;
     }
 
-    // helper: map FE -> payload API
     const buildPayloadBase = () => ({
       fullname: technicianData.name,
       username: technicianData.username,
       role_id: selectedRole.id,
     });
 
-    // =========================
-    // UPDATE USER
-    // =========================
     if (technicianToEdit) {
       try {
         const payload: any = {
@@ -648,14 +749,13 @@ const AdminPage: React.FC = () => {
           ...buildPayloadBase(),
         };
 
-        // ✅ password optional: kirim hanya kalau user isi
         const pwd = String(technicianData.password || '').trim();
         if (pwd) payload.password = pwd;
 
         const res = await fetch(
           'https://api-homeservice.viniela.id/api/v1/admin/user-management-update',
           {
-            method: 'PUT', // atau PUT kalau API-mu pakai PUT
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify(payload),
@@ -665,16 +765,13 @@ const AdminPage: React.FC = () => {
         let json: any = null;
         try {
           json = await res.json();
-        } catch {
-          // ignore
-        }
+        } catch {}
 
         if (!res.ok) {
           const msg = json?.message || json?.error || `Gagal update user (status ${res.status}).`;
           throw new Error(msg);
         }
 
-        // ✅ update state dari payload (atau dari json kalau server balikin data)
         setAllUsers((prev) =>
           prev.map((u) =>
             u.id === technicianToEdit.id
@@ -700,21 +797,16 @@ const AdminPage: React.FC = () => {
       return;
     }
 
-    // =========================
-    // CREATE USER (STORE)
-    // =========================
     try {
       const res = await fetch(
         'https://api-homeservice.viniela.id/api/v1/admin/user-management-store',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
             ...buildPayloadBase(),
-            password: technicianData.password, // create wajib
+            password: technicianData.password,
           }),
         },
       );
@@ -853,7 +945,7 @@ const AdminPage: React.FC = () => {
     const result: AdminBooking[] = [];
 
     techSchedules.forEach((tech) => {
-      tech.schedules.forEach((s) => {
+      tech.schedules.forEach((s: any) => {
         const startDate = s.schedule_date;
         const endDate = s.schedule_date;
 
@@ -975,12 +1067,24 @@ const AdminPage: React.FC = () => {
 
       case 'services':
         return (
-          <ServicesSection
-            services={services}
-            onAddService={handleOpenAddService}
-            onEditService={handleOpenEditService}
-            onRequestDelete={setServiceToDelete}
-          />
+          <div className="space-y-6">
+            {/* ✅ NEW: Categories CRUD UI */}
+            <ServiceCategoriesSection
+              categories={serviceCategories}
+              servicesCountByCategoryId={servicesCountByCategoryId}
+              onAdd={handleOpenAddCategory}
+              onEdit={handleOpenEditCategory}
+              onRequestDelete={setCategoryToDelete}
+            />
+
+            {/* Existing Services UI */}
+            <ServicesSection
+              services={services}
+              onAddService={handleOpenAddService}
+              onEditService={handleOpenEditService}
+              onRequestDelete={setServiceToDelete}
+            />
+          </div>
         );
 
       case 'availability':
@@ -1078,6 +1182,18 @@ const AdminPage: React.FC = () => {
         serviceCategories={serviceCategories}
       />
 
+      {/* ✅ NEW: Category modal */}
+      <ServiceCategoryFormModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => {
+          setIsCategoryModalOpen(false);
+          setCategoryEditObj(null);
+        }}
+        onSave={handleSaveCategory}
+        categoryToEdit={categoryEditObj}
+        existingNames={serviceCategories.map((c) => c.name)}
+      />
+
       <TechnicianFormModal
         isOpen={isTechnicianModalOpen}
         onClose={() => setIsTechnicianModalOpen(false)}
@@ -1115,6 +1231,31 @@ const AdminPage: React.FC = () => {
             Apakah Anda yakin ingin menghapus layanan{' '}
             <span className="font-bold">"{serviceToDelete.serviceName}"</span>? Tindakan ini tidak
             dapat diurungkan.
+          </p>
+        </GenericConfirmationModal>
+      )}
+
+      {/* ✅ NEW: Delete category confirm */}
+      {categoryToDelete && (
+        <GenericConfirmationModal
+          isOpen={true}
+          onClose={() => setCategoryToDelete(null)}
+          onConfirm={handleDeleteCategory}
+          title="Hapus Kategori?"
+          confirmText="Ya, Hapus"
+          confirmButtonClass="bg-red-600 hover:bg-red-700 focus:ring-red-500"
+        >
+          <p>
+            Apakah Anda yakin ingin menghapus kategori{' '}
+            <span className="font-bold">"{categoryToDelete.name}"</span>?
+          </p>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+            Dipakai oleh:{' '}
+            <span className="font-bold">{servicesCountByCategoryId[categoryToDelete.id] ?? 0}</span>{' '}
+            layanan.
+          </p>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+            Tindakan ini tidak dapat diurungkan.
           </p>
         </GenericConfirmationModal>
       )}

@@ -16,7 +16,14 @@ export const ADMIN_ENDPOINTS = {
   users: `${ADMIN_PREFIX}/user-management-list`,
   userDelete: `${ADMIN_PREFIX}/user-management-delete`,
   roles: `${ADMIN_PREFIX}/user-role-list`,
+
+  // Service Category
   serviceCategories: `${ADMIN_PREFIX}/service-category-list`,
+  serviceCategoryDetail: `${ADMIN_PREFIX}/service-category`, // + "/:id"
+  serviceCategoryCreate: `${ADMIN_PREFIX}/service-category`,
+  serviceCategoryUpdate: `${ADMIN_PREFIX}/service-category`, // + "/:id"
+  serviceCategoryDelete: `${ADMIN_PREFIX}/service-category`, // + "/:id"
+
   bookings: `${ADMIN_PREFIX}/user-booking-list`,
   services: `${ADMIN_PREFIX}/service-list`,
   updateBookingStatus: `${ADMIN_PREFIX}/update-booking-status`,
@@ -53,6 +60,16 @@ export interface ServiceMasterCategory {
   id: number;
   name: string;
 }
+
+/* -------------------- Service Category CRUD (Payload/Type) -------------------- */
+
+export type ServiceCategoryPayload = {
+  name: string;
+};
+
+export type ServiceCategoryDetail = ServiceMasterCategory;
+
+/* ------------------------ Booking / Schedule / Service ------------------------ */
 
 export type AdminBooking = Booking & {
   formId?: number;
@@ -252,6 +269,10 @@ export async function deleteUserOnServer(userId: number): Promise<void> {
   });
 }
 
+/* -------------------------------------------------------------------------- */
+/*                          SERVICE CATEGORY (CRUD)                            */
+/* -------------------------------------------------------------------------- */
+
 export async function fetchServiceCategoriesFromApi(): Promise<ServiceMasterCategory[]> {
   const data = await apiArray<any>(ADMIN_ENDPOINTS.serviceCategories);
 
@@ -262,6 +283,91 @@ export async function fetchServiceCategoriesFromApi(): Promise<ServiceMasterCate
     }),
   );
 }
+
+export async function fetchServiceCategoryDetailFromApi(
+  id: number,
+): Promise<ServiceCategoryDetail> {
+  const res: any = await apiRequest(`${ADMIN_ENDPOINTS.serviceCategoryDetail}/${id}`, {
+    method: 'GET',
+  });
+
+  // backend kamu sebelumnya pakai misc.response -> umumnya { error, message, data }
+  const data = res?.data ?? res;
+
+  if (!data) throw new Error('Service Category detail not found');
+
+  return {
+    id: Number(data.id),
+    name: String(data.name ?? ''),
+  };
+}
+
+export async function createServiceCategoryOnServer(
+  payload: ServiceCategoryPayload,
+): Promise<ServiceMasterCategory> {
+  const body = {
+    name: String(payload.name ?? '').trim(),
+  };
+
+  if (!body.name || body.name.length < 2) {
+    throw new Error('Name is required (min 2 chars)');
+  }
+
+  const res: any = await apiRequest(ADMIN_ENDPOINTS.serviceCategoryCreate, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const data = res?.data ?? res;
+
+  // bisa dari { data: {id,name} } atau langsung {id,name}
+  const newId = Number(data?.id ?? data?.data?.id);
+  const newName = String(data?.name ?? data?.data?.name ?? body.name);
+
+  if (!Number.isFinite(newId)) {
+    // kalau backend tidak return id, tetap balikin name supaya UI bisa update optimistik
+    return { id: 0, name: newName };
+  }
+
+  return { id: newId, name: newName };
+}
+
+export async function updateServiceCategoryOnServer(
+  id: number,
+  payload: ServiceCategoryPayload,
+): Promise<ServiceMasterCategory> {
+  const body = {
+    name: String(payload.name ?? '').trim(),
+  };
+
+  if (!body.name || body.name.length < 2) {
+    throw new Error('Name is required (min 2 chars)');
+  }
+
+  const res: any = await apiRequest(`${ADMIN_ENDPOINTS.serviceCategoryUpdate}/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const data = res?.data ?? res;
+
+  return {
+    id: Number(data?.id ?? id),
+    name: String(data?.name ?? body.name),
+  };
+}
+
+export async function deleteServiceCategoryOnServer(id: number): Promise<void> {
+  await apiRequest(`${ADMIN_ENDPOINTS.serviceCategoryDelete}/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                  BOOKINGS                                  */
+/* -------------------------------------------------------------------------- */
 
 export async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
   const data = await apiArray<ApiBookingItem>(ADMIN_ENDPOINTS.bookings);
@@ -308,6 +414,10 @@ export async function fetchBookingsFromApi(): Promise<AdminBooking[]> {
     };
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/*                                   SERVICES                                 */
+/* -------------------------------------------------------------------------- */
 
 export async function fetchServicesFromApi(): Promise<Service[]> {
   const data = await apiArray<ApiServiceItem>(ADMIN_ENDPOINTS.services);

@@ -1,7 +1,8 @@
 import { Plus, XCircle } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Service } from '../config/services';
-import { ServiceMasterCategory } from '../lib/api/admin';
+import { Service } from '../../../config/services';
+import { ServiceMasterCategory } from '../../../lib/api/admin';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 
 type Props = {
   isOpen: boolean;
@@ -14,7 +15,6 @@ type Props = {
 };
 
 type UnitPrice = 'unit' | 'jam' | 'kg' | 'm²';
-const UNIT_OPTIONS: UnitPrice[] = ['unit', 'jam', 'kg', 'm²'];
 
 type PointPayload = { includes: string[]; excludes: string[] };
 
@@ -62,6 +62,10 @@ const ServiceFormModal: React.FC<Props> = ({
 }) => {
   const isEdit = !!serviceToEdit;
 
+  const UNIT_OPTIONS: UnitPrice[] = ['unit', 'jam', 'kg', 'm²'];
+
+  const unitOptions = useMemo(() => UNIT_OPTIONS.map((u) => ({ value: u, label: u })), []);
+
   const [name, setName] = useState('');
   const [price, setPrice] = useState<string>('');
   const [unitPrice, setUnitPrice] = useState<UnitPrice>('unit');
@@ -83,13 +87,11 @@ const ServiceFormModal: React.FC<Props> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const categoryOptions = useMemo(() => serviceCategories, [serviceCategories]);
-
-  // ✅ suggestion untuk input kategori (ADD only)
-  const categoryNameSuggestions = useMemo(() => {
-    return uniqClean(serviceCategories.map((c) => String(c.name)));
-  }, [serviceCategories]);
-
+  const categorySelectOptions = useMemo(
+    () => serviceCategories.map((c) => ({ value: c.id, label: c.name })),
+    [serviceCategories],
+  );
+g
   // ✅ biar init form cuma sekali per "sesi edit/add"
   const hydratedKeyRef = useRef<string>('');
 
@@ -314,17 +316,15 @@ const ServiceFormModal: React.FC<Props> = ({
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
                 Satuan Harga
               </label>
-              <select
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary"
+
+              <SearchableSelect<UnitPrice>
                 value={unitPrice}
-                onChange={(e) => setUnitPrice(e.target.value as UnitPrice)}
-              >
-                {UNIT_OPTIONS.map((u) => (
-                  <option key={u} value={u}>
-                    {u}
-                  </option>
-                ))}
-              </select>
+                options={unitOptions}
+                placeholder="Pilih satuan..."
+                searchPlaceholder="Cari satuan..."
+                emptyText="Satuan tidak ditemukan"
+                onChange={(next) => setUnitPrice(next)}
+              />
             </div>
 
             <div className="flex items-end gap-2">
@@ -349,20 +349,24 @@ const ServiceFormModal: React.FC<Props> = ({
 
             {isEdit ? (
               <>
-                {/* EDIT: pilih existing */}
-                <select
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary"
-                  value={selectedCategoryId}
-                  onChange={handleChangeSelectCategory}
+                <SearchableSelect<number>
+                  value={selectedCategoryId ? Number(selectedCategoryId) : ''}
+                  options={categorySelectOptions}
+                  placeholder="Pilih kategori..."
+                  searchPlaceholder="Cari kategori..."
+                  emptyText="Kategori tidak ditemukan"
                   required
-                >
-                  <option value="">-- Pilih kategori --</option>
-                  {categoryOptions.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(nextId) => {
+                    // update state selectedCategoryId kamu (string/number, sesuaikan)
+                    setSelectedCategoryId(String(nextId));
+
+                    // kalau sebelumnya kamu pakai handleChangeSelectCategory(event)
+                    // kamu bisa tetap panggil dengan "fake event" TANPA any:
+                    handleChangeSelectCategory({
+                      target: { value: String(nextId) },
+                    } as React.ChangeEvent<HTMLSelectElement>);
+                  }}
+                />
 
                 <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                   Edit mode: hanya bisa pilih kategori yang sudah ada (tidak membuat kategori baru).
@@ -370,25 +374,23 @@ const ServiceFormModal: React.FC<Props> = ({
               </>
             ) : (
               <>
-                {/* ADD: manual ketik */}
-                <input
-                  type="text"
-                  list="service-category-suggestions"
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="Ketik kategori... (contoh: AC, Elektronik, Plumbing)"
+                <SearchableSelect<string>
                   value={categoryLabel}
-                  onChange={handleChangeCategoryLabel}
+                  options={categorySelectOptions.map((o) => ({
+                    value: String(o.label),
+                    label: o.label,
+                  }))}
+                  placeholder="Pilih kategori..."
+                  searchPlaceholder="Cari kategori..."
+                  emptyText="Kategori tidak ditemukan"
                   required
+                  onChange={(next) => {
+                    // ADD mode: kamu masih pakai label
+                    handleChangeCategoryLabel({
+                      target: { value: next },
+                    } as React.ChangeEvent<HTMLInputElement>);
+                  }}
                 />
-                <datalist id="service-category-suggestions">
-                  {categoryNameSuggestions.map((n) => (
-                    <option key={n} value={n} />
-                  ))}
-                </datalist>
-
-                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                  Tambah mode: kamu bisa ketik kategori baru. List hanya sebagai suggestion.
-                </p>
               </>
             )}
           </div>
