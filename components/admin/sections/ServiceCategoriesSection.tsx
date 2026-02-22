@@ -34,9 +34,6 @@ const ServiceCategoriesSection: React.FC<Props> = ({
             <h2 className="text-lg font-bold text-gray-800 dark:text-white">
               Master Kategori Layanan
             </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-300">
-              Tambah / edit / hapus kategori yang dipakai oleh layanan.
-            </p>
           </div>
 
           <div className="flex items-center gap-2">
